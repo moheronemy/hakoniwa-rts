@@ -27,7 +27,12 @@ export function advanceTurn(prev: GameState): GameState {
     const id = state.playerIslandId;
     if (entry.islandId === id || entry.public || entry.involves?.includes(id)) newLogs.push(entry);
   };
-  const world: World = { islands: state.islands, turn, emit: (e) => record({ ...e, turn }) };
+  const world: World = {
+    islands: state.islands,
+    turn,
+    emit: (e) => record({ ...e, turn }),
+    economicTarget: state.settings.economicTarget,
+  };
 
   const order = rng.permutation(state.islands.length);
   for (const index of order) {

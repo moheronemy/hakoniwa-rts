@@ -4,7 +4,16 @@ import { applyDisaster, runDisasters } from './disasters';
 import { DEFAULT_SETTINGS } from './game';
 import { setTile, tileAt } from './island';
 import { fireMissiles, type World } from './military';
-import { isHardened, MONSTERS, monsterOf, monsterTile, moveMonsters, spawnWildMonster } from './monsters';
+import {
+  BREED_STAGES,
+  isHardened,
+  MONSTER_RULES,
+  MONSTERS,
+  monsterOf,
+  monsterTile,
+  moveMonsters,
+  spawnWildMonster,
+} from './monsters';
 import { Rng } from './rng';
 import { RULES } from './rules';
 import { deserialize } from './save';
@@ -150,7 +159,9 @@ describe('野生の怪獣', () => {
 
   it('人口の段階に応じた種類が現れる', () => {
     const a = island('a');
-    for (let i = 0; i < 12; i++) a.tiles[i] = { kind: 'town', value: 200 }; // 人口24万人（段階1）
+    // 段階1の人口ちょうどにする
+    const towns = MONSTER_RULES.stagePops[0] / 200;
+    for (let i = 0; i < towns; i++) a.tiles[i] = { kind: 'town', value: 200 };
     spawnWildMonster(a, fixedRng(0), 1, noLog);
     const monster = a.tiles.find((t) => t.kind === 'monster');
     expect(monster).toBeDefined();
@@ -222,12 +233,13 @@ describe('怪獣の育成と派遣', () => {
     const early = world([a, b], 150);
     const bred = executeCommand(a, 'breed', 2, 2, ctx(early), { monster: 'm1' });
     expect(bred.ok).toBe(true);
-    expect(a.breeding).toEqual([{ x: 2, y: 2, monster: 'm1', readyTurn: 160 }]);
+    const ready = 150 + BREED_STAGES[1]!.turns;
+    expect(a.breeding).toEqual([{ x: 2, y: 2, monster: 'm1', readyTurn: ready }]);
     expect(executeCommand(a, 'breed', 2, 2, ctx(early), { monster: 'm2' }).ok).toBe(false); // 1棟に1匹
 
-    const notYet = executeCommand(a, 'sendMonster', 0, 0, ctx(world([a, b], 155)), { targetIslandId: 'b' });
+    const notYet = executeCommand(a, 'sendMonster', 0, 0, ctx(world([a, b], ready - 1)), { targetIslandId: 'b' });
     expect(notYet.ok).toBe(false);
-    const sent = executeCommand(a, 'sendMonster', 0, 0, ctx(world([a, b], 160)), { targetIslandId: 'b' });
+    const sent = executeCommand(a, 'sendMonster', 0, 0, ctx(world([a, b], ready)), { targetIslandId: 'b' });
     expect(sent.ok).toBe(true);
     expect(b.tiles.filter((t) => t.kind === 'monster')).toHaveLength(1);
     expect(a.breeding).toHaveLength(0);

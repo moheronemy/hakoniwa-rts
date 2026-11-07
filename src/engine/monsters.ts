@@ -42,22 +42,22 @@ export const MONSTERS: Readonly<Record<MonsterId, MonsterDef>> = Object.fromEntr
 
 /** 段階ごとの、育てる費用・ターン数・必要な研究 */
 export const BREED_STAGES: Readonly<Record<number, { cost: number; turns: number; tech: TechId }>> = {
-  1: { cost: 1000, turns: 10, tech: 'bio1' },
-  2: { cost: 3000, turns: 15, tech: 'bio2' },
-  3: { cost: 8000, turns: 20, tech: 'bio3' },
-  4: { cost: 20000, turns: 30, tech: 'bio4' },
+  1: { cost: 1500, turns: 20, tech: 'bio1' },
+  2: { cost: 4500, turns: 30, tech: 'bio2' },
+  3: { cost: 12000, turns: 40, tech: 'bio3' },
+  4: { cost: 30000, turns: 60, tech: 'bio4' },
 };
 
 export const MONSTER_RULES = {
   /** 1つの島にいられる怪獣の数 */
   cap: 7,
-  multiplyChance: 0.5,
+  multiplyChance: 0.3,
   drainChance: 0.2,
   drainFraction: 0.25,
   /** 迎撃の能力でミサイルを無効にする確率 */
   interceptChance: 0.5,
-  /** 野生の怪獣が出る段階の人口（100人単位）：20万・40万・60万・80万人 */
-  stagePops: [2000, 4000, 6000, 8000],
+  /** 野生の怪獣が出る段階の人口（100人単位）：30万・50万・70万・90万人 */
+  stagePops: [3000, 5000, 7000, 9000],
   /** 野生の怪獣の出現率：陸地1マスあたり（災害の強さを掛ける） */
   spawnPerArea: 1 / 10000,
 } as const;

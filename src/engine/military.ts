@@ -12,6 +12,8 @@ export interface World {
   islands: Island[];
   turn: number;
   emit: (entry: Omit<LogEntry, 'turn'>) => void;
+  /** 経済的制覇の目標人口（AI が先行する島を止めるのに使う） */
+  economicTarget?: number;
 }
 
 type Effect = 'destroy' | 'land' | 'nuke';

@@ -47,14 +47,14 @@ const PROFILES: Record<AiController, Profile> = {
     labLevels: 9,
     attackEvery: (t, attacked) => (attacked || t > 800 ? 12 : 0),
     monsterLabs: 0,
-    research: ['automation', 'betterWind', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'cityPlan', 'oilProspect'],
+    research: ['automation', 'betterWind', 'guidance', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'cityPlan'],
   },
   tamer: {
     bases: (t) => (t < 120 ? 0 : Math.min(3, 1 + Math.floor(t / 250))),
     interceptors: (_t, pop, attacked) => 1 + Math.floor(pop / 5000) + (attacked ? 1 : 0),
     labLevels: 6,
     attackEvery: (t) => (t > 200 ? 10 : 0),
-    monsterLabs: 2,
+    monsterLabs: 1,
     research: ['bio1', 'betterWind', 'automation', 'bio2', 'interceptUp', 'reclaim1', 'bio3', 'turbine', 'bio4', 'guidance'],
   },
 };
@@ -147,9 +147,13 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     if (c) return c;
   }
 
-  // 4. 自分の島に出た怪獣を撃つ
+  // 4. 自分の島に出た怪獣を撃つ。基地がなければ、まず基地を建てる
   const hunt = huntMonsters(world, island, rng);
   if (hunt) return hunt;
+  if (island.tiles.some((t) => t.kind === 'monster') && missileCapacity(island) === 0) {
+    const c = findSite(island, 'missileBase', rng);
+    if (c) return c;
+  }
 
   // 5. 怪獣を育てて送る（怪獣使い型）
   const tame = planMonsters(world, island, profile, rng, attacked);
@@ -239,7 +243,7 @@ function planMonsters(world: World, island: Island, profile: Profile, rng: Rng, 
     const enemies = world.islands.filter((i) => i.id !== island.id && !i.destroyed);
     const recent = island.lastAttackedBy;
     const revenge = attacked && recent ? enemies.find((e) => e.id === recent.islandId) : undefined;
-    const target = revenge ?? [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0];
+    const target = leaderToStop(world, enemies) ?? revenge ?? [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0];
     if (target) return cmd('sendMonster', 0, 0, { targetIslandId: target.id });
   }
 
@@ -287,7 +291,7 @@ function planAttack(world: World, island: Island, profile: Profile, rng: Rng, at
   const recent = island.lastAttackedBy;
   const revenge = recent && world.turn - recent.turn < 100 ? enemies.find((e) => e.id === recent.islandId) : undefined;
   const strongest = [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0]!;
-  const target = island.controller === 'military' ? strongest : (revenge ?? strongest);
+  const target = leaderToStop(world, enemies) ?? (island.controller === 'military' ? strongest : (revenge ?? strongest));
 
   const kind = chooseMissile(island);
   if (!kind) return null;
@@ -296,6 +300,16 @@ function planAttack(world: World, island: Island, profile: Profile, rng: Rng, at
   const aim = chooseAim(target, rng);
   if (!aim) return null;
   return cmd(kind, aim.x, aim.y, { targetIslandId: target.id, count: 0 });
+}
+
+/**
+ * 経済的制覇に近づいた島（目標人口の60%以上で、いちばん人口の多い島）。いなければ undefined。
+ * どの AI もこの島を優先して攻撃し、先行する島の独走を止める。
+ */
+function leaderToStop(world: World, enemies: Island[]): Island | undefined {
+  if (!world.economicTarget) return undefined;
+  const leader = [...enemies].sort((a, b) => islandStats(b).pop - islandStats(a).pop)[0];
+  return leader && islandStats(leader).pop >= world.economicTarget * 0.6 ? leader : undefined;
 }
 
 function chooseMissile(island: Island): MissileKind | null {

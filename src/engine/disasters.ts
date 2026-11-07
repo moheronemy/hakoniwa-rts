@@ -78,7 +78,7 @@ function earthquake(island: Island, rng: Rng, log: Logger): void {
     const tile = tileAt(island, x, y);
     const isCity = tile.kind === 'town' && tile.value >= RULES.cityThreshold;
     if (!isCity && !QUAKE_TARGETS.has(tile.kind)) return;
-    if (rng.int(4) !== 0) return;
+    if (rng.int(8) !== 0) return;
     lost.push(terrainName(tile));
     setTile(island, x, y, 'waste');
   });
