@@ -27,6 +27,8 @@ export function computePower(island: Island): PowerReport {
   let factory = 0;
   let labs = 0;
   let cityPop = 0;
+  let military = 0;
+  let interceptors = 0;
 
   for (const tile of island.tiles) {
     switch (tile.kind) {
@@ -51,10 +53,20 @@ export function computePower(island: Island): PowerReport {
       case 'town':
         if (tile.value >= RULES.cityThreshold) cityPop += tile.value;
         break;
+      case 'missileBase':
+        military += RULES.powerPerMissileBase;
+        break;
+      case 'seaBase':
+        military += RULES.powerPerSeaBase;
+        break;
+      case 'interceptor':
+        interceptors += 1;
+        break;
       default:
         break;
     }
   }
+  if (hasTech(island, 'baseAuto')) military *= 1 - RULES.baseAutoSaving;
 
   const fuelPerLevel = hasTech(island, 'refining') ? 1 - RULES.refiningFuelSaving : 1;
   const fuelNeed = thermalLevels * fuelPerLevel;
@@ -70,7 +82,9 @@ export function computePower(island: Island): PowerReport {
   const demand =
     (factory * RULES.powerPerFactory +
       labs * RULES.powerPerLab +
-      (cityPop / 100) * RULES.powerPerCityPop100) *
+      (cityPop / 100) * RULES.powerPerCityPop100 +
+      military +
+      interceptors * RULES.powerPerInterceptor) *
     gridFactor;
 
   const ratio = demand <= 0 ? 1 : Math.min(1, supply / demand);

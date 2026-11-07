@@ -69,6 +69,28 @@ export const RULES = {
   turbineBonus: 0.25,
   gridSaving: 0.15,
   cityPlanGrowth: 2,
+
+  // ---- M3：軍事 ----
+  /** 序盤の保護：このターンまではミサイルを撃てない */
+  protectionTurns: 100,
+  powerPerMissileBase: 5,
+  powerPerSeaBase: 10,
+  powerPerInterceptor: 10,
+  baseAutoSaving: 0.5,
+  /** 迎撃施設が守る範囲（マス） */
+  interceptRange: 2,
+  interceptChance: 0.7,
+  interceptChanceImproved: 0.85,
+  /** 経験値：相手の陸地に着弾 / 住宅地や施設を壊した */
+  expLand: 1,
+  expDestroy: 3,
+  expMax: 255,
+  /** ミサイル基地のレベルが上がる経験値（レベル1〜5） */
+  missileBaseLevels: [0, 20, 60, 120, 200],
+  /** 海底基地のレベルが上がる経験値（レベル1〜4） */
+  seaBaseLevels: [0, 50, 100, 200],
+  /** 人口0がこのターン数続いたら滅亡 */
+  emptyTurnsToDestroy: 10,
 } as const;
 
 /** 発電所の種類ごとの数値 */

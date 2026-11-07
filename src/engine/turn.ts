@@ -1,29 +1,46 @@
+import { planAI } from './ai';
 import { executeCommand, type TurnEffects } from './commands';
 import { incomeBreakdown } from './forecast';
-import { hasAdjacent, setTile } from './island';
+import { hasAdjacent, islandStats, setTile } from './island';
+import type { World } from './military';
 import { computePower, labPoints } from './power';
 import { Rng } from './rng';
 import { RULES } from './rules';
+import { ranking } from './score';
 import { addResearchPoints, hasTech, TECHS } from './tech';
-import type { GameState, Island, LogEntry, LogTone } from './types';
+import type { GameState, Island, LogEntry, LogTone, Outcome } from './types';
 
 /**
  * 1ターン分の処理（仕様書2章・16章・17章）。入力の state は書き換えず、新しい state を返す。
  */
 export function advanceTurn(prev: GameState): GameState {
+  if (prev.outcome) return prev; // 勝敗が決まったら進めない
   const state: GameState = structuredClone(prev);
   const rng = new Rng(state.rngState);
   state.turn += 1;
   const turn = state.turn;
   const newLogs: LogEntry[] = [];
+  // プレイヤーに関係する出来事だけをログに残す（AI の島の内部の出来事は残さない）
+  const record = (entry: LogEntry) => {
+    const id = state.playerIslandId;
+    if (entry.islandId === id || entry.public || entry.involves?.includes(id)) newLogs.push(entry);
+  };
+  const world: World = { islands: state.islands, turn, emit: (e) => record({ ...e, turn }) };
 
   const order = rng.permutation(state.islands.length);
   for (const index of order) {
     const island = state.islands[index];
-    if (!island) continue;
-    const log = (text: string, tone: LogTone = 'info') =>
-      newLogs.push({ turn, islandId: island.id, text, tone });
-    processIsland(island, rng, log);
+    if (!island || island.destroyed) continue;
+    const log = (text: string, tone: LogTone = 'info', involves?: string[]) =>
+      record({ turn, islandId: island.id, text, tone, involves });
+    if (island.controller !== 'player') planAI(world, island, rng);
+    processIsland(island, rng, log, world);
+  }
+
+  updateDestruction(state, record);
+  state.outcome = checkOutcome(state);
+  if (state.outcome) {
+    record({ turn, islandId: state.playerIslandId, text: state.outcome.reason, tone: state.outcome.result === 'win' ? 'good' : 'bad', public: true });
   }
 
   state.rngState = rng.state;
@@ -31,9 +48,55 @@ export function advanceTurn(prev: GameState): GameState {
   return state;
 }
 
-type Logger = (text: string, tone?: LogTone) => void;
+/** 人口0が続いた島と、陸地がなくなった島を滅亡させる */
+function updateDestruction(state: GameState, record: (entry: LogEntry) => void): void {
+  for (const island of state.islands) {
+    if (island.destroyed) continue;
+    const { pop, area } = islandStats(island);
+    island.emptyTurns = pop === 0 ? island.emptyTurns + 1 : 0;
+    if (area === 0 || island.emptyTurns >= RULES.emptyTurnsToDestroy) {
+      island.destroyed = true;
+      island.queue = [];
+      record({ turn: state.turn, islandId: island.id, text: `${island.name}が滅亡した`, tone: 'bad', public: true });
+    }
+  }
+}
 
-function processIsland(island: Island, rng: Rng, log: Logger): void {
+/** 勝敗の判定（仕様書18章）。決まらなければ null */
+export function checkOutcome(state: GameState): Outcome | null {
+  const player = state.islands.find((i) => i.id === state.playerIslandId)!;
+  const turn = state.turn;
+  const lose = (winnerId: string | null, reason: string): Outcome => ({ result: 'lose', winnerId, reason, turn });
+  const win = (reason: string): Outcome => ({ result: 'win', winnerId: player.id, reason, turn });
+
+  if (player.destroyed) return lose(null, 'あなたの島が滅亡した');
+
+  const alive = state.islands.filter((i) => !i.destroyed);
+  const reached = alive
+    .map((island) => ({ island, pop: islandStats(island).pop }))
+    .filter((r) => r.pop >= state.settings.economicTarget)
+    .sort((a, b) => b.pop - a.pop);
+  if (reached.length > 0) {
+    const winner = reached[0]!.island;
+    return winner.id === player.id
+      ? win('経済的制覇を達成した！')
+      : lose(winner.id, `${winner.name}が経済的制覇を達成した`);
+  }
+
+  if (state.islands.length > 1 && alive.length === 1) return win('軍事的制覇を達成した！');
+
+  if (turn >= state.settings.turnLimit) {
+    const top = ranking(alive)[0]!;
+    return top.id === player.id
+      ? win('期限を迎え、スコア1位で勝利した！')
+      : lose(top.id, `期限を迎え、${top.name}がスコア1位になった`);
+  }
+  return null;
+}
+
+type Logger = (text: string, tone?: LogTone, involves?: string[]) => void;
+
+function processIsland(island: Island, rng: Rng, log: Logger, world: World): void {
   // 電力：火力発電の燃料を使い、供給率を決める（このターンの効率に使う）
   const power = computePower(island);
   island.oil -= power.fuelUsed;
@@ -42,7 +105,7 @@ function processIsland(island: Island, rng: Rng, log: Logger): void {
 
   collectIncome(island, power.ratio);
   produceOil(island, log);
-  const effects = runCommands(island, rng, log);
+  const effects = runCommands(island, rng, log, world);
   doResearch(island, power.ratio, log);
   grow(island, rng, effects, power.ratio);
   handleFoodShortage(island, rng, log);
@@ -82,17 +145,20 @@ function doResearch(island: Island, powerRatio: number, log: Logger): void {
  * 予約の先頭から命令を実行する。ターンを消費する命令を1つ実行したら終わる。
  * 実行できなかった命令と即時命令はターンを消費せず、次の命令に進む。
  */
-function runCommands(island: Island, rng: Rng, log: Logger): TurnEffects {
+function runCommands(island: Island, rng: Rng, log: Logger, world: World): TurnEffects {
   const effects: TurnEffects = { attract: false };
-  const ctx = { effects, rng };
+  const ctx = { effects, rng, world };
   while (island.queue.length > 0) {
     const command = island.queue.shift()!;
-    const result = executeCommand(island, command.kind, command.x, command.y, ctx);
+    const result = executeCommand(island, command.kind, command.x, command.y, ctx, {
+      targetIslandId: command.targetIslandId,
+      count: command.count,
+    });
     if (!result.ok) {
       log(result.message, 'bad');
       continue;
     }
-    log(result.message, result.tone);
+    log(result.message, result.tone, command.targetIslandId ? [command.targetIslandId] : undefined);
     if (result.consumedTurn) return effects;
   }
   // 予約が空になった（または最初から空だった）ので資金繰り

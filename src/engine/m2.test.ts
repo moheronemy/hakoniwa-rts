@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { commandCost, executeCommand, targetProblem, type CommandContext } from './commands';
-import { enqueueCommand, playerIsland, setResearch } from './game';
+import { DEFAULT_SETTINGS, enqueueCommand, playerIsland, setResearch } from './game';
 import { setTile, tileAt } from './island';
 import { computePower } from './power';
 import { Rng } from './rng';
@@ -22,11 +22,25 @@ function plainIsland(size = 8): Island {
     oil: 0,
     research: newResearch(),
     queue: [],
+    controller: 'player',
+    destroyed: false,
+    emptyTurns: 0,
+    lastAttackedBy: null,
   };
 }
 
 function stateWith(island: Island): GameState {
-  return { version: 2, turn: 0, rngState: 7, islands: [island], playerIslandId: island.id, log: [], nextCommandId: 1 };
+  return {
+    version: 3,
+    turn: 0,
+    rngState: 7,
+    islands: [island],
+    playerIslandId: island.id,
+    log: [],
+    nextCommandId: 1,
+    settings: DEFAULT_SETTINGS,
+    outcome: null,
+  };
 }
 
 /** 乱数を固定した命令の実行環境 */
@@ -283,7 +297,7 @@ describe('セーブデータの移行', () => {
       state: { version: 1, turn: 5, rngState: 1, islands: [v1Island], playerIslandId: 'test', log: [], nextCommandId: 1 },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(state.islands[0]!.oil).toBe(0);
     expect(state.islands[0]!.research).toEqual(newResearch());
   });

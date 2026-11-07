@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { COMMAND_LIST, COMMANDS, commandCost, targetProblem } from '../engine/commands';
 import { forecast } from '../engine/forecast';
+import { isMissile } from '../engine/military';
 import { autoPrepareTargets } from '../engine/game';
 import { formatPeople, formatThousands, islandStats, terrainName, tileAt, tileDetail } from '../engine/island';
 import { RULES } from '../engine/rules';
@@ -137,7 +138,7 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoP
         </span>
       </div>
       <ul className="commands">
-        {COMMAND_LIST.map((def) => {
+        {COMMAND_LIST.filter((def) => !isMissile(def.kind)).map((def) => {
           // マスを対象にしない命令（石油の売却など）は、実行するときに条件を確かめるので予約はできる
           const problem = def.targeted
             ? selected
@@ -209,6 +210,7 @@ function AutoInput({
 
 interface QueuePanelProps {
   island: Island;
+  islandNames: Record<string, string>;
   selectedId: number | null;
   onSelect: (id: number | null) => void;
   onMove: (id: number, delta: number) => void;
@@ -216,7 +218,7 @@ interface QueuePanelProps {
   onClear: () => void;
 }
 
-export function QueuePanel({ island, selectedId, onSelect, onMove, onRemove, onClear }: QueuePanelProps) {
+export function QueuePanel({ island, islandNames, selectedId, onSelect, onMove, onRemove, onClear }: QueuePanelProps) {
   return (
     <section className="panel">
       <div className="panel-head">
@@ -239,7 +241,14 @@ export function QueuePanel({ island, selectedId, onSelect, onMove, onRemove, onC
                 <button type="button" className="queue-item" onClick={() => onSelect(isSelected ? null : command.id)}>
                   <span className="queue-index">{index + 1}</span>
                   <span>{def.name}</span>
-                  {def.targeted && <span className="muted">({command.x}, {command.y})</span>}
+                  {command.targetIslandId ? (
+                    <span className="muted">
+                      {islandNames[command.targetIslandId] ?? '?'} ({command.x}, {command.y})・
+                      {command.count ? `${command.count}発` : '撃てるだけ'}
+                    </span>
+                  ) : (
+                    def.targeted && <span className="muted">({command.x}, {command.y})</span>
+                  )}
                 </button>
                 {isSelected && (
                   <span className="queue-actions">

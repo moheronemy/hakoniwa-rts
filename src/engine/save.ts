@@ -1,7 +1,9 @@
 import { newResearch } from './tech';
-import type { GameState } from './types';
+import { DEFAULT_SETTINGS, generateAiIslands } from './game';
+import { Rng } from './rng';
+import type { GameState, Island } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveFile {
   format: 'hakoniwa-rts-save';
@@ -35,7 +37,8 @@ export function deserialize(text: string): GameState {
   if (!isRecord(state) || !Array.isArray(state.islands) || typeof state.turn !== 'number') {
     throw new Error('セーブデータが壊れています');
   }
-  if (parsed.version === 1) return migrateV1(state);
+  if (parsed.version === 1) return migrateV2(migrateV1(state) as unknown as Record<string, unknown>);
+  if (parsed.version === 2) return migrateV2(state);
   if (parsed.version !== SAVE_VERSION) {
     throw new Error(`対応していないセーブデータの版です（${String(parsed.version)}）`);
   }
@@ -50,6 +53,30 @@ function migrateV1(state: Record<string, unknown>): GameState {
     research: newResearch(),
   }));
   return { ...state, version: 2, islands } as unknown as GameState;
+}
+
+/**
+ * 版2（M2）→ 版3（M3）：島に持ち主と滅亡の状態を足し、AI の島を3つ新しく加える。
+ * 勝敗の設定は標準の値にする。
+ */
+function migrateV2(state: Record<string, unknown>): GameState {
+  const islands = (state.islands as Array<Record<string, unknown>>).map((island) => ({
+    ...island,
+    controller: 'player',
+    destroyed: false,
+    emptyTurns: 0,
+    lastAttackedBy: null,
+  })) as unknown as Island[];
+  const rng = new Rng(typeof state.rngState === 'number' ? state.rngState : 1);
+  const ais = generateAiIslands(rng);
+  return {
+    ...(state as unknown as GameState),
+    version: 3,
+    rngState: rng.state,
+    islands: [...islands, ...ais],
+    settings: DEFAULT_SETTINGS,
+    outcome: null,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

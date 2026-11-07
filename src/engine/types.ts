@@ -14,7 +14,10 @@ export type TerrainKind =
   | 'hydroPower' // 水力発電所（value = 段階）
   | 'thermalPower' // 火力発電所（value = 段階）
   | 'nuclearPower' // 原子力発電所（value = 段階）
-  | 'lab'; // 研究所（value = 段階）
+  | 'lab' // 研究所（value = 段階）
+  | 'missileBase' // ミサイル基地（value = 経験値）
+  | 'seaBase' // 海底基地（value = 経験値）
+  | 'interceptor'; // 迎撃施設
 
 export interface Tile {
   kind: TerrainKind;
@@ -40,7 +43,19 @@ export type CommandKind =
   | 'lab' // 研究所建設
   | 'oilSearch' // 油田探し
   | 'sellOil' // 石油の売却
-  | 'invest'; // 研究投資
+  | 'invest' // 研究投資
+  | 'missileBase' // ミサイル基地建設
+  | 'seaBase' // 海底基地建設
+  | 'interceptor' // 迎撃施設建設
+  | MissileKind;
+
+/** ミサイルの種類（命令の種類でもある） */
+export type MissileKind =
+  | 'missileNormal' // 通常弾
+  | 'missilePrecise' // 精密弾
+  | 'missilePinpoint' // 高精度弾
+  | 'missileLand' // 陸地破壊弾
+  | 'missileNuke'; // 核弾頭
 
 /** 技術の種類（仕様書17章） */
 export type TechId =
@@ -54,7 +69,14 @@ export type TechId =
   | 'betterWind' // 改良風車
   | 'turbine' // 高効率タービン
   | 'grid' // 送電網
-  | 'nuclear'; // 原子力
+  | 'nuclear' // 原子力
+  | 'guidance' // 精密誘導
+  | 'pinpoint' // ピンポイント誘導
+  | 'interceptUp' // 迎撃改良
+  | 'seaBaseTech' // 海底基地
+  | 'landBuster' // 陸地破壊弾
+  | 'nukeTech' // 核弾頭
+  | 'baseAuto'; // 基地の自動化
 
 export interface Research {
   /** まだどの技術にも注いでいない研究ポイント */
@@ -74,7 +96,14 @@ export interface Command {
   /** マスを対象にしない命令では 0 */
   x: number;
   y: number;
+  /** ミサイルの目標の島 */
+  targetIslandId?: string;
+  /** ミサイルの発数。0 は「撃てるだけ」 */
+  count?: number;
 }
+
+/** 島の持ち主。player 以外は AI の性格 */
+export type Controller = 'player' | 'military' | 'economic' | 'balanced';
 
 export interface Island {
   id: string;
@@ -92,20 +121,47 @@ export interface Island {
   research: Research;
   /** 命令予約。先頭から実行する */
   queue: Command[];
+  controller: Controller;
+  /** 滅亡したか */
+  destroyed: boolean;
+  /** 人口0が続いているターン数 */
+  emptyTurns: number;
+  /** 最後にミサイルを撃ち込んできた島 */
+  lastAttackedBy: { islandId: string; turn: number } | null;
 }
 
 export type LogTone = 'info' | 'good' | 'bad';
 
 export interface LogEntry {
   turn: number;
+  /** 出来事が起きた島 */
   islandId: string;
   text: string;
   tone: LogTone;
+  /** この出来事に関わる他の島（攻撃の相手など） */
+  involves?: string[];
+  /** すべての島に知らせる出来事（滅亡など） */
+  public?: boolean;
+}
+
+export interface GameSettings {
+  /** 経済的制覇の目標人口（100人単位） */
+  economicTarget: number;
+  /** 期限のターン数 */
+  turnLimit: number;
+}
+
+export interface Outcome {
+  result: 'win' | 'lose';
+  /** 勝った島 */
+  winnerId: string | null;
+  reason: string;
+  turn: number;
 }
 
 export interface GameState {
   /** セーブデータの形式のバージョン */
-  version: 2;
+  version: 3;
   /** 処理済みのターン数 */
   turn: number;
   /** 乱数の内部状態 */
@@ -114,4 +170,7 @@ export interface GameState {
   playerIslandId: string;
   log: LogEntry[];
   nextCommandId: number;
+  settings: GameSettings;
+  /** 勝敗が決まったら入る。決まるまで null */
+  outcome: Outcome | null;
 }

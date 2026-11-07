@@ -2,13 +2,19 @@ import { hasAdjacent, isSea, setTile, tileAt } from './island';
 import type { Rng } from './rng';
 import { RULES } from './rules';
 import { newResearch } from './tech';
-import type { Island } from './types';
+import type { Controller, Island } from './types';
 
 /**
  * 初期の島を作る（仕様書16章）。
- * 中央の6×6マスを荒地にし、周りに陸地をランダムに広げてから、森・村・山を置く。
+ * 中央の6×6マスを荒地にし、周りに陸地をランダムに広げてから、森・村・山・農場を置く。
  */
-export function generateIsland(rng: Rng, id: string, name: string, size: number = RULES.islandSize): Island {
+export function generateIsland(
+  rng: Rng,
+  id: string,
+  name: string,
+  controller: Controller = 'player',
+  size: number = RULES.islandSize,
+): Island {
   const island: Island = {
     id,
     name,
@@ -19,6 +25,10 @@ export function generateIsland(rng: Rng, id: string, name: string, size: number 
     oil: 0,
     research: newResearch(),
     queue: [],
+    controller,
+    destroyed: false,
+    emptyTurns: 0,
+    lastAttackedBy: null,
   };
 
   const center = Math.floor(size / 2);
@@ -52,6 +62,8 @@ export function generateIsland(rng: Rng, id: string, name: string, size: number 
   placeFeatures(island, rng, 'forest', 6, 5);
   placeFeatures(island, rng, 'town', 2, 5);
   placeFeatures(island, rng, 'mountain', 2, 0);
+  // 何もしなくても序盤に飢えて滅亡しないよう、農場を1つ置く（仕様書18章）
+  placeFeatures(island, rng, 'farm', 1, RULES.farmInitial);
 
   return island;
 }
@@ -59,7 +71,7 @@ export function generateIsland(rng: Rng, id: string, name: string, size: number 
 function placeFeatures(
   island: Island,
   rng: Rng,
-  kind: 'forest' | 'town' | 'mountain',
+  kind: 'forest' | 'town' | 'mountain' | 'farm',
   count: number,
   value: number,
 ): void {

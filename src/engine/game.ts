@@ -1,24 +1,55 @@
 import { COMMANDS } from './commands';
+import type { MissileKind } from './types';
 import { generateIsland } from './generate';
 import { tileAt } from './island';
 import { Rng } from './rng';
 import { RULES } from './rules';
 import { canResearch } from './tech';
-import type { Command, CommandKind, GameState, Island, TechId } from './types';
+import type { Command, CommandKind, Controller, GameSettings, GameState, Island, TechId } from './types';
 
 export const PLAYER_ISLAND_ID = 'player';
 
-export function newGame(seed: number, islandName = 'あなたの島'): GameState {
+/** AI の島（仕様書18章）。性格はゲームごとに入れ替える */
+const AI_ISLANDS = [
+  { id: 'ai-north', name: '北の島' },
+  { id: 'ai-east', name: '東の島' },
+  { id: 'ai-south', name: '南の島' },
+] as const;
+
+const AI_CONTROLLERS: readonly Controller[] = ['military', 'economic', 'balanced'];
+
+export const CONTROLLER_NAMES: Record<Controller, string> = {
+  player: 'あなた',
+  military: '軍事型',
+  economic: '内政型',
+  balanced: 'バランス型',
+};
+
+export const ECONOMIC_TARGET_OPTIONS = [10000, 15000, 20000] as const; // 100万・150万・200万人
+export const TURN_LIMIT_OPTIONS = [1000, 2000, 3000] as const;
+
+export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 15000, turnLimit: 2000 };
+
+/** AI の島を3つ作る */
+export function generateAiIslands(rng: Rng): Island[] {
+  const controllers = rng.permutation(AI_CONTROLLERS.length).map((i) => AI_CONTROLLERS[i]!);
+  return AI_ISLANDS.map((ai, i) => generateIsland(rng, ai.id, ai.name, controllers[i]!));
+}
+
+export function newGame(seed: number, settings: GameSettings = DEFAULT_SETTINGS, islandName = 'あなたの島'): GameState {
   const rng = new Rng(seed);
-  const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName);
+  const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName, 'player');
+  const ais = generateAiIslands(rng);
   return {
-    version: 2,
+    version: 3,
     turn: 0,
     rngState: rng.state,
-    islands: [island],
+    islands: [island, ...ais],
     playerIslandId: PLAYER_ISLAND_ID,
     log: [{ turn: 0, islandId: PLAYER_ISLAND_ID, text: `${islandName}の開発が始まった`, tone: 'info' }],
     nextCommandId: 1,
+    settings,
+    outcome: null,
   };
 }
 
@@ -74,6 +105,21 @@ export function enqueueCommand(
     count,
     position,
   ).state;
+}
+
+/**
+ * ミサイルの命令を予約する。shots は1回の命令で撃つ発数（0 は撃てるだけ）。
+ */
+export function enqueueMissile(
+  state: GameState,
+  kind: MissileKind,
+  targetIslandId: string,
+  x: number,
+  y: number,
+  shots: number,
+  position?: number,
+): GameState {
+  return insertCommands(state, (id) => ({ id, kind, x, y, targetIslandId, count: shots }), 1, position).state;
 }
 
 export function removeCommand(state: GameState, commandId: number): GameState {

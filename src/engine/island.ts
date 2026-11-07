@@ -78,6 +78,9 @@ const TERRAIN_NAMES: Record<Exclude<TerrainKind, 'town'>, string> = {
   thermalPower: '火力発電所',
   nuclearPower: '原子力発電所',
   lab: '研究所',
+  missileBase: 'ミサイル基地',
+  seaBase: '海底基地',
+  interceptor: '迎撃施設',
 };
 
 export function terrainName(tile: Tile): string {
@@ -107,9 +110,29 @@ export function tileDetail(tile: Tile): string {
     case 'nuclearPower':
     case 'lab':
       return `${tile.value}段階`;
+    case 'missileBase':
+    case 'seaBase':
+      return `経験値 ${tile.value}・レベル${baseLevel(tile)}`;
     default:
       return '';
   }
+}
+
+/** 基地のレベル（経験値から決まる。1回の命令で撃てる発数） */
+export function baseLevel(tile: Tile): number {
+  const table: readonly number[] = tile.kind === 'seaBase' ? RULES.seaBaseLevels : RULES.missileBaseLevels;
+  let level = 0;
+  for (const need of table) if (tile.value >= need) level++;
+  return level;
+}
+
+/**
+ * 他の島から見たマス。ミサイル基地は森、海底基地は深い海に見える。
+ */
+export function visibleTile(tile: Tile): Tile {
+  if (tile.kind === 'missileBase') return { kind: 'forest', value: 30 };
+  if (tile.kind === 'seaBase') return { kind: 'deepSea', value: 0 };
+  return tile;
 }
 
 /** 100人単位の人口を表示用の文字列にする */
