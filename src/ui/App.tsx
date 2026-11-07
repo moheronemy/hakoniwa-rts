@@ -4,8 +4,10 @@ import {
   autoPrepareTargets,
   clearQueue,
   enqueueAutoPrepare,
+  enqueueBreed,
   enqueueCommand,
   enqueueMissile,
+  enqueueSendMonster,
   moveCommand,
   newGame,
   playerIsland,
@@ -15,12 +17,20 @@ import {
 import { visibleTile } from '../engine/island';
 import { deserialize, serialize } from '../engine/save';
 import { advanceTurn } from '../engine/turn';
-import type { CommandKind, GameSettings, GameState, MissileKind } from '../engine/types';
+import type { CommandKind, GameSettings, GameState, MissileKind, MonsterId } from '../engine/types';
 import { MapCanvas, type MapMarker } from './MapCanvas';
 import { CommandMenu, INTERVAL_OPTIONS, LogPanel, QueuePanel, StatusBar, TechPanel } from './Panels';
 import { AUTOSAVE_KEY, loadText, readPreference, saveText, writePreference } from './storage';
 import { useTurnTimer } from './useTurnTimer';
-import { IslandTabs, MissileMenu, NewGameDialog, OutcomeDialog, RankingPanel } from './WarPanels';
+import {
+  BreedPanel,
+  IslandTabs,
+  MissileMenu,
+  NewGameDialog,
+  OutcomeDialog,
+  RankingPanel,
+  SendMonsterPanel,
+} from './WarPanels';
 
 const INTERVAL_KEY = 'turnIntervalMs';
 
@@ -111,7 +121,9 @@ export function App() {
     const seen = new Set<string>();
     const result: MapMarker[] = [];
     island.queue.forEach((c, index) => {
-      const onThisIsland = viewingOwn ? !c.targetIslandId && COMMANDS[c.kind].targeted : c.targetIslandId === viewed.id;
+      const onThisIsland = c.targetIslandId
+        ? c.targetIslandId === viewed.id && c.kind !== 'sendMonster'
+        : viewingOwn && COMMANDS[c.kind].targeted;
       if (!onThisIsland) return;
       const key = `${c.x},${c.y}`;
       if (seen.has(key)) return;
@@ -153,6 +165,17 @@ export function App() {
     if (!selected) return;
     setGame((g) => (g ? enqueueMissile(g, kind, viewed.id, selected.x, selected.y, shots, insertIndex ?? undefined) : g));
   };
+
+  const handleBreed = (monster: MonsterId) => {
+    if (!selected) return;
+    setGame((g) => (g ? enqueueBreed(g, selected.x, selected.y, monster, insertIndex ?? undefined) : g));
+  };
+
+  const handleSend = () => {
+    setGame((g) => (g ? enqueueSendMonster(g, viewed.id, insertIndex ?? undefined) : g));
+  };
+
+  const selectedTile = selected ? viewed.tiles[selected.y * viewed.size + selected.x] : undefined;
 
   const handleAutoPrepare = (kind: 'prepare' | 'prepareInstant') => {
     const total = autoPrepareTargets(island).length;
@@ -255,6 +278,19 @@ export function App() {
           />
         </div>
         <div className="side">
+          {viewingOwn && selectedTile?.kind === 'monsterLab' && selected && (
+            <BreedPanel game={game} island={island} lab={selected} onBreed={handleBreed} />
+          )}
+          {viewingOwn && selectedTile?.kind === 'monster' && (
+            <MissileMenu
+              game={game}
+              player={island}
+              target={island}
+              selected={selected}
+              insertBefore={insertIndex}
+              onFire={handleFire}
+            />
+          )}
           {viewingOwn ? (
             <CommandMenu
               island={island}
@@ -264,14 +300,17 @@ export function App() {
               onAutoPrepare={handleAutoPrepare}
             />
           ) : (
-            <MissileMenu
-              game={game}
-              player={island}
-              target={viewed}
-              selected={selected}
-              insertBefore={insertIndex}
-              onFire={handleFire}
-            />
+            <>
+              <MissileMenu
+                game={game}
+                player={island}
+                target={viewed}
+                selected={selected}
+                insertBefore={insertIndex}
+                onFire={handleFire}
+              />
+              <SendMonsterPanel game={game} player={island} target={viewed} onSend={handleSend} />
+            </>
           )}
           <QueuePanel
             island={island}

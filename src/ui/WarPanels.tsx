@@ -1,10 +1,18 @@
 import { useState } from 'react';
-import { CONTROLLER_NAMES, DEFAULT_SETTINGS, ECONOMIC_TARGET_OPTIONS, TURN_LIMIT_OPTIONS } from '../engine/game';
-import { formatPeople, islandStats, terrainName, visibleTile } from '../engine/island';
+import { breedCost, breedProblem, readyMonsters } from '../engine/commands';
+import {
+  CONTROLLER_NAMES,
+  DEFAULT_SETTINGS,
+  DISASTER_LEVEL_OPTIONS,
+  ECONOMIC_TARGET_OPTIONS,
+  TURN_LIMIT_OPTIONS,
+} from '../engine/game';
+import { formatPeople, islandStats, terrainName, tileDetail, visibleTile } from '../engine/island';
 import { MISSILE_LIST, missileCapacity, missileProblem } from '../engine/military';
+import { abilityNames, BREED_STAGES, MONSTER_LIST, MONSTERS } from '../engine/monsters';
 import { RULES } from '../engine/rules';
 import { islandScore, ranking } from '../engine/score';
-import type { GameSettings, GameState, Island, MissileKind, Outcome } from '../engine/types';
+import type { GameSettings, GameState, Island, MissileKind, MonsterId, Outcome } from '../engine/types';
 
 interface TabsProps {
   game: GameState;
@@ -58,16 +66,25 @@ export function MissileMenu({ game, player, target, selected, insertBefore, onFi
   const world = { islands: game.islands, turn: Math.max(game.turn + 1, RULES.protectionTurns + 1) };
   const capacity = missileCapacity(player);
   const room = RULES.queueMax - player.queue.length;
-  const protectedFor = RULES.protectionTurns - game.turn;
+  const own = target.id === player.id;
+  const protectedFor = own ? 0 : RULES.protectionTurns - game.turn;
 
   return (
     <section className="panel">
       <h2>
-        {target.name}への攻撃 <small>{CONTROLLER_NAMES[target.controller]}</small>
+        {own ? (
+          <>
+            自分の島の怪獣を撃つ <small>自分の施設に当たると壊れます</small>
+          </>
+        ) : (
+          <>
+            {target.name}への攻撃 <small>{CONTROLLER_NAMES[target.controller]}</small>
+          </>
+        )}
       </h2>
       {selected && tile ? (
         <p className="tile-info">
-          ({selected.x}, {selected.y}) <strong>{terrainName(tile)}</strong>
+          ({selected.x}, {selected.y}) <strong>{terrainName(tile)}</strong> {tile.kind === 'monster' ? tileDetail(tile) : ''}
         </p>
       ) : (
         <p className="tile-info muted">狙うマスを選んでください</p>
@@ -196,6 +213,19 @@ export function NewGameDialog({ onStart, onCancel }: NewGameProps) {
             ))}
           </select>
         </label>
+        <label>
+          災害の強さ（野生の怪獣の出やすさにも効く）
+          <select
+            value={settings.disasterLevel}
+            onChange={(e) => setSettings({ ...settings, disasterLevel: Number(e.target.value) })}
+          >
+            {DISASTER_LEVEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <p className="muted">最初の{RULES.protectionTurns}ターンは、どの島もミサイルを撃てません。</p>
         <div className="dialog-actions">
           {onCancel && (
@@ -230,5 +260,91 @@ export function OutcomeDialog({ outcome, onNewGame, onClose }: { outcome: Outcom
         </div>
       </div>
     </div>
+  );
+}
+
+interface BreedPanelProps {
+  game: GameState;
+  island: Island;
+  lab: { x: number; y: number };
+  onBreed: (monster: MonsterId) => void;
+}
+
+/** 怪獣研究所のマスを選んだときのメニュー（怪獣を育てる） */
+export function BreedPanel({ game, island, lab, onBreed }: BreedPanelProps) {
+  const current = island.breeding.find((b) => b.x === lab.x && b.y === lab.y);
+  const queued = island.queue.some((c) => c.kind === 'breed' && c.x === lab.x && c.y === lab.y);
+  const room = RULES.queueMax - island.queue.length;
+  return (
+    <section className="panel">
+      <h2>
+        怪獣研究所 ({lab.x}, {lab.y})
+      </h2>
+      <p className="tile-info">
+        {current
+          ? current.readyTurn <= game.turn
+            ? `${MONSTERS[current.monster].name}が育ち上がっています。他の島を表示して「怪獣派遣」で送れます`
+            : `${MONSTERS[current.monster].name}を育てています（あと${current.readyTurn - game.turn}ターン）`
+          : queued
+            ? '育てる命令を予約しています'
+            : '空いています。育てる怪獣を選んでください'}
+      </p>
+      <ul className="commands">
+        {MONSTER_LIST.map((m) => {
+          const stage = BREED_STAGES[m.stage]!;
+          const problem =
+            breedProblem(island, m.id) ??
+            (current || queued ? 'この研究所では育てられません（1棟に1匹）' : null) ??
+            (room <= 0 ? '予約に空きがありません' : null);
+          const abilities = abilityNames(m);
+          return (
+            <li key={m.id}>
+              <button
+                type="button"
+                disabled={problem !== null}
+                title={problem ?? `体力${m.hpMin}${m.hpRange > 1 ? `〜${m.hpMin + m.hpRange - 1}` : ''}・${abilities.join('・') || '能力なし'}`}
+                onClick={() => onBreed(m.id)}
+              >
+                <span className="cmd-name">
+                  {m.name} <em>段階{m.stage}</em>
+                </span>
+                <span className="cmd-cost">
+                  {breedCost(m.id).toLocaleString('ja-JP')}億円・{stage.turns}ターン
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+interface SendMonsterProps {
+  game: GameState;
+  player: Island;
+  target: Island;
+  onSend: () => void;
+}
+
+/** 他の島を表示しているときの「怪獣派遣」 */
+export function SendMonsterPanel({ game, player, target, onSend }: SendMonsterProps) {
+  if (player.breeding.length === 0 && !player.tiles.some((t) => t.kind === 'monsterLab')) return null;
+  const ready = readyMonsters(player, game.turn);
+  const room = RULES.queueMax - player.queue.length;
+  const problem =
+    player.breeding.length === 0 ? '育てている怪獣がいません' : room <= 0 ? '予約に空きがありません' : null;
+  return (
+    <section className="panel">
+      <h2>
+        怪獣派遣 <small>育ち上がった怪獣 {ready.length}匹・育てている怪獣 {player.breeding.length - ready.length}匹</small>
+      </h2>
+      <p className="muted">
+        予約を実行するときに育ち上がった怪獣がいれば、{target.name}のどこかに1匹送り込みます。
+      </p>
+      <button type="button" disabled={problem !== null} title={problem ?? undefined} onClick={onSend}>
+        {target.name}に怪獣を送る
+      </button>
+    </section>
   );
 }

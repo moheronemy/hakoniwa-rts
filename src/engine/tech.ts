@@ -1,12 +1,13 @@
 import type { Island, Research, TechId } from './types';
 
-export type Branch = 'civil' | 'industry' | 'energy' | 'military';
+export type Branch = 'civil' | 'industry' | 'energy' | 'military' | 'bio';
 
 export const BRANCH_NAMES: Record<Branch, string> = {
   civil: '土木',
   industry: '産業',
   energy: 'エネルギー',
   military: '軍事',
+  bio: '生物',
 };
 
 export interface TechDef {
@@ -39,6 +40,10 @@ export const TECH_LIST: readonly TechDef[] = [
   { id: 'interceptUp', branch: 'military', name: '迎撃改良', cost: 900, requires: null, description: '迎撃の確率が70%から85%になる' },
   { id: 'seaBaseTech', branch: 'military', name: '海底基地', cost: 1200, requires: null, description: '海底基地を建てられるようになる' },
   { id: 'baseAuto', branch: 'military', name: '基地の自動化', cost: 1000, requires: null, description: 'ミサイル基地と海底基地の電力消費が半分になる' },
+  { id: 'bio1', branch: 'bio', name: '怪獣研究', cost: 800, requires: null, description: '怪獣研究所を建て、段階1の怪獣（M1・M2）を育てられる' },
+  { id: 'bio2', branch: 'bio', name: '怪獣強化', cost: 1500, requires: 'bio1', description: '段階2の怪獣（M3・M4）を育てられる' },
+  { id: 'bio3', branch: 'bio', name: '怪獣改良', cost: 2500, requires: 'bio2', description: '段階3の怪獣（M5・M6）を育てられる' },
+  { id: 'bio4', branch: 'bio', name: '究極の怪獣', cost: 4000, requires: 'bio3', description: '段階4の怪獣（M7・M8）を育てられる' },
 ];
 
 export const TECHS: Readonly<Record<TechId, TechDef>> = Object.fromEntries(

@@ -1,8 +1,10 @@
 import { planAI } from './ai';
 import { executeCommand, type TurnEffects } from './commands';
+import { runDisasters } from './disasters';
 import { incomeBreakdown } from './forecast';
 import { hasAdjacent, islandStats, setTile } from './island';
 import type { World } from './military';
+import { moveMonsters, spawnWildMonster } from './monsters';
 import { computePower, labPoints } from './power';
 import { Rng } from './rng';
 import { RULES } from './rules';
@@ -34,7 +36,7 @@ export function advanceTurn(prev: GameState): GameState {
     const log = (text: string, tone: LogTone = 'info', involves?: string[]) =>
       record({ turn, islandId: island.id, text, tone, involves });
     if (island.controller !== 'player') planAI(world, island, rng);
-    processIsland(island, rng, log, world);
+    processIsland(island, rng, log, world, state.settings.disasterLevel);
   }
 
   updateDestruction(state, record);
@@ -96,7 +98,7 @@ export function checkOutcome(state: GameState): Outcome | null {
 
 type Logger = (text: string, tone?: LogTone, involves?: string[]) => void;
 
-function processIsland(island: Island, rng: Rng, log: Logger, world: World): void {
+function processIsland(island: Island, rng: Rng, log: Logger, world: World, disasterLevel: number): void {
   // 電力：火力発電の燃料を使い、供給率を決める（このターンの効率に使う）
   const power = computePower(island);
   island.oil -= power.fuelUsed;
@@ -107,8 +109,20 @@ function processIsland(island: Island, rng: Rng, log: Logger, world: World): voi
   produceOil(island, log);
   const effects = runCommands(island, rng, log, world);
   doResearch(island, power.ratio, log);
+  dropLostBreeding(island);
+  moveMonsters(island, rng, world.turn, log);
   grow(island, rng, effects, power.ratio);
+  // 序盤の保護の間は、災害も野生の怪獣も起きない（操作を覚える前に壊滅しないように）
+  if (world.turn > RULES.protectionTurns) {
+    runDisasters(island, rng, disasterLevel, log);
+    spawnWildMonster(island, rng, disasterLevel, log);
+  }
   handleFoodShortage(island, rng, log);
+}
+
+/** 怪獣研究所が壊れたら、そこで育てていた怪獣もいなくなる */
+function dropLostBreeding(island: Island): void {
+  island.breeding = island.breeding.filter((b) => island.tiles[b.y * island.size + b.x]?.kind === 'monsterLab');
 }
 
 /** 収入と食料の消費。工場の収入には電力の供給率と研究の効果を掛ける */
@@ -153,6 +167,7 @@ function runCommands(island: Island, rng: Rng, log: Logger, world: World): TurnE
     const result = executeCommand(island, command.kind, command.x, command.y, ctx, {
       targetIslandId: command.targetIslandId,
       count: command.count,
+      monster: command.monster,
     });
     if (!result.ok) {
       log(result.message, 'bad');

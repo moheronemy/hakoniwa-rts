@@ -1,4 +1,5 @@
 import { baseLevel } from '../engine/island';
+import { monsterOf } from '../engine/monsters';
 import { RULES } from '../engine/rules';
 import type { Tile } from '../engine/types';
 
@@ -29,6 +30,36 @@ function house(ctx: Ctx, x: number, y: number, wall: string, roof: string): void
   px(ctx, roof, x, y, 8, 3);
   px(ctx, wall, x + 1, y + 3, 6, 5);
   px(ctx, '#5d4037', x + 3, y + 5, 2, 3);
+}
+
+/** 怪獣の体の色（種類ごと） */
+const MONSTER_COLORS: Record<string, string> = {
+  m1: '#8d6e63',
+  m2: '#78909c',
+  m3: '#ef6c00',
+  m4: '#5c6bc0',
+  m5: '#66bb6a',
+  m6: '#455a64',
+  m7: '#c62828',
+  m8: '#6a1b9a',
+};
+
+/** 仮の怪獣：荒地の上に、種類ごとの色のずんぐりした体と目。強い段階ほど角が増える */
+function drawMonster(ctx: Ctx, tile: Tile, ox: number, oy: number): void {
+  const { def, hp } = monsterOf(tile);
+  base(ctx, ox, oy, '#b39a6b');
+  const body = MONSTER_COLORS[def.id] ?? '#795548';
+  px(ctx, body, ox + 7, oy + 10, 18, 16);
+  px(ctx, body, ox + 9, oy + 6, 14, 4);
+  px(ctx, body, ox + 8, oy + 26, 5, 4);
+  px(ctx, body, ox + 19, oy + 26, 5, 4);
+  px(ctx, '#ffffff', ox + 11, oy + 12, 4, 4);
+  px(ctx, '#ffffff', ox + 18, oy + 12, 4, 4);
+  px(ctx, '#000000', ox + 13, oy + 13, 2, 2);
+  px(ctx, '#000000', ox + 20, oy + 13, 2, 2);
+  for (let i = 0; i < def.stage; i++) px(ctx, '#fff59d', ox + 9 + i * 4, oy + 3, 2, 3);
+  // 体力を下に小さく
+  for (let i = 0; i < Math.min(hp, 10); i++) px(ctx, '#e53935', ox + 2 + i * 3, oy + 30, 2, 2);
 }
 
 /** 発電所や研究所の段階を、右下に小さな点で示す */
@@ -187,6 +218,25 @@ export function drawTile(ctx: Ctx, tile: Tile, ox: number, oy: number): void {
       px(ctx, '#90a4ae', ox + 9, oy + 10, 14, 8);
       px(ctx, '#b0bec5', ox + 20, oy + 4, 3, 8);
       px(ctx, '#b0bec5', ox + 9, oy + 4, 3, 8);
+      break;
+    case 'monster':
+      drawMonster(ctx, tile, ox, oy);
+      break;
+    case 'wall':
+      base(ctx, ox, oy, '#9e9e9e');
+      for (let row = 0; row < 4; row++) {
+        const shift = row % 2 === 0 ? 0 : 4;
+        for (let col = 0; col < 4; col++) px(ctx, '#757575', ox + shift + col * 8, oy + row * 8 + 7, 7, 1);
+        px(ctx, '#757575', ox, oy + row * 8, 32, 1);
+      }
+      break;
+    case 'monsterLab':
+      grass(ctx, ox, oy);
+      px(ctx, '#6a1b9a', ox + 4, oy + 12, 24, 16);
+      px(ctx, '#8e24aa', ox + 8, oy + 6, 16, 6);
+      px(ctx, '#e1bee7', ox + 10, oy + 16, 4, 4);
+      px(ctx, '#e1bee7', ox + 18, oy + 16, 4, 4);
+      px(ctx, '#ce93d8', ox + 14, oy + 2, 4, 4);
       break;
     default: {
       const unreachable: never = tile.kind;

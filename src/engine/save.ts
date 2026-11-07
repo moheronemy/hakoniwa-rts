@@ -1,9 +1,9 @@
-import { newResearch } from './tech';
 import { DEFAULT_SETTINGS, generateAiIslands } from './game';
 import { Rng } from './rng';
-import type { GameState, Island } from './types';
+import { newResearch } from './tech';
+import type { GameState } from './types';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface SaveFile {
   format: 'hakoniwa-rts-save';
@@ -22,7 +22,17 @@ export function serialize(state: GameState, now = new Date()): string {
   return JSON.stringify(file);
 }
 
-/** セーブデータを読み込む。形式が違えば例外を投げる */
+/** 移行の途中のデータ（形はまだ GameState と決まっていない） */
+type Raw = Record<string, unknown>;
+
+/** 版 n のデータを版 n+1 に変える関数。添字が元の版 */
+const MIGRATIONS: Record<number, (state: Raw) => Raw> = {
+  1: migrateV1,
+  2: migrateV2,
+  3: migrateV3,
+};
+
+/** セーブデータを読み込む。古い版は順に移行する。形式が違えば例外を投げる */
 export function deserialize(text: string): GameState {
   let parsed: unknown;
   try {
@@ -33,50 +43,68 @@ export function deserialize(text: string): GameState {
   if (!isRecord(parsed) || parsed.format !== 'hakoniwa-rts-save') {
     throw new Error('このゲームのセーブデータではありません');
   }
-  const state = parsed.state;
-  if (!isRecord(state) || !Array.isArray(state.islands) || typeof state.turn !== 'number') {
+  const original = parsed.state;
+  if (!isRecord(original) || !Array.isArray(original.islands) || typeof original.turn !== 'number') {
     throw new Error('セーブデータが壊れています');
   }
-  if (parsed.version === 1) return migrateV2(migrateV1(state) as unknown as Record<string, unknown>);
-  if (parsed.version === 2) return migrateV2(state);
-  if (parsed.version !== SAVE_VERSION) {
-    throw new Error(`対応していないセーブデータの版です（${String(parsed.version)}）`);
+  let state: Raw = original;
+  let version = parsed.version;
+  if (typeof version !== 'number' || version < 1 || version > SAVE_VERSION) {
+    throw new Error(`対応していないセーブデータの版です（${String(version)}）`);
+  }
+  while (version < SAVE_VERSION) {
+    state = MIGRATIONS[version]!(state);
+    version++;
   }
   return state as unknown as GameState;
 }
 
+function islandsOf(state: Raw): Raw[] {
+  return state.islands as Raw[];
+}
+
 /** 版1（M1）→ 版2（M2）：島に石油と研究の状態を足す */
-function migrateV1(state: Record<string, unknown>): GameState {
-  const islands = (state.islands as Array<Record<string, unknown>>).map((island) => ({
-    ...island,
-    oil: 0,
-    research: newResearch(),
-  }));
-  return { ...state, version: 2, islands } as unknown as GameState;
+function migrateV1(state: Raw): Raw {
+  const islands = islandsOf(state).map((island) => ({ ...island, oil: 0, research: newResearch() }));
+  return { ...state, version: 2, islands };
 }
 
 /**
  * 版2（M2）→ 版3（M3）：島に持ち主と滅亡の状態を足し、AI の島を3つ新しく加える。
  * 勝敗の設定は標準の値にする。
  */
-function migrateV2(state: Record<string, unknown>): GameState {
-  const islands = (state.islands as Array<Record<string, unknown>>).map((island) => ({
+function migrateV2(state: Raw): Raw {
+  const islands = islandsOf(state).map((island) => ({
     ...island,
     controller: 'player',
     destroyed: false,
     emptyTurns: 0,
     lastAttackedBy: null,
-  })) as unknown as Island[];
+  }));
   const rng = new Rng(typeof state.rngState === 'number' ? state.rngState : 1);
   const ais = generateAiIslands(rng);
   return {
-    ...(state as unknown as GameState),
+    ...state,
     version: 3,
     rngState: rng.state,
     islands: [...islands, ...ais],
-    settings: DEFAULT_SETTINGS,
+    settings: { economicTarget: DEFAULT_SETTINGS.economicTarget, turnLimit: DEFAULT_SETTINGS.turnLimit },
     outcome: null,
   };
+}
+
+/**
+ * 版3（M3）→ 版4（M4）：災害の強さを「ふつう」にし、島に怪獣研究所の状態を足す。
+ * バランス型の AI は怪獣使い型にする。
+ */
+function migrateV3(state: Raw): Raw {
+  const islands = islandsOf(state).map((island) => ({
+    ...island,
+    controller: island.controller === 'balanced' ? 'tamer' : island.controller,
+    breeding: Array.isArray(island.breeding) ? island.breeding : [],
+  }));
+  const settings = { ...(state.settings as Raw), disasterLevel: DEFAULT_SETTINGS.disasterLevel };
+  return { ...state, version: 4, islands, settings };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

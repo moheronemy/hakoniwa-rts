@@ -29,6 +29,7 @@ export function computePower(island: Island): PowerReport {
   let cityPop = 0;
   let military = 0;
   let interceptors = 0;
+  let monsterLabs = 0;
 
   for (const tile of island.tiles) {
     switch (tile.kind) {
@@ -62,6 +63,9 @@ export function computePower(island: Island): PowerReport {
       case 'interceptor':
         interceptors += 1;
         break;
+      case 'monsterLab':
+        monsterLabs += 1;
+        break;
       default:
         break;
     }
@@ -84,7 +88,8 @@ export function computePower(island: Island): PowerReport {
       labs * RULES.powerPerLab +
       (cityPop / 100) * RULES.powerPerCityPop100 +
       military +
-      interceptors * RULES.powerPerInterceptor) *
+      interceptors * RULES.powerPerInterceptor +
+      monsterLabs * RULES.powerPerMonsterLab) *
     gridFactor;
 
   const ratio = demand <= 0 ? 1 : Math.min(1, supply / demand);

@@ -1,4 +1,5 @@
 import { neighbors } from './hex';
+import { abilityNames, monsterOf } from './monsters';
 import { RULES } from './rules';
 import type { Island, TerrainKind, Tile } from './types';
 
@@ -63,7 +64,7 @@ export function islandStats(island: Island): IslandStats {
   return stats;
 }
 
-const TERRAIN_NAMES: Record<Exclude<TerrainKind, 'town'>, string> = {
+const TERRAIN_NAMES: Record<Exclude<TerrainKind, 'town' | 'monster'>, string> = {
   deepSea: '海',
   shallow: '浅瀬',
   waste: '荒地',
@@ -81,9 +82,12 @@ const TERRAIN_NAMES: Record<Exclude<TerrainKind, 'town'>, string> = {
   missileBase: 'ミサイル基地',
   seaBase: '海底基地',
   interceptor: '迎撃施設',
+  wall: '防壁',
+  monsterLab: '怪獣研究所',
 };
 
 export function terrainName(tile: Tile): string {
+  if (tile.kind === 'monster') return monsterOf(tile).def.name;
   if (tile.kind === 'town') {
     if (tile.value >= RULES.cityThreshold) return '都市';
     if (tile.value >= RULES.villageMax) return '町';
@@ -113,6 +117,11 @@ export function tileDetail(tile: Tile): string {
     case 'missileBase':
     case 'seaBase':
       return `経験値 ${tile.value}・レベル${baseLevel(tile)}`;
+    case 'monster': {
+      const { def, hp } = monsterOf(tile);
+      const abilities = abilityNames(def);
+      return `体力${hp}${abilities.length > 0 ? `・${abilities.join('・')}` : ''}`;
+    }
     default:
       return '';
   }

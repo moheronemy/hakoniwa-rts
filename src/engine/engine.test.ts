@@ -37,6 +37,7 @@ function emptyIsland(size = 6): Island {
     destroyed: false,
     emptyTurns: 0,
     lastAttackedBy: null,
+    breeding: [],
   };
 }
 
@@ -46,7 +47,7 @@ function ctx(seed = 1): CommandContext {
 
 function stateWith(island: Island): GameState {
   return {
-    version: 3,
+    version: 4,
     turn: 0,
     rngState: 42,
     islands: [island],
