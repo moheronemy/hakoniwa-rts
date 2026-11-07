@@ -352,3 +352,20 @@ button:disabled {
 .tone-bad {
   color: var(--bad);
 }
+
+.auto-input {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.auto-input h3 {
+  font-size: 0.9rem;
+  margin: 0 0 6px;
+}
+
+.auto-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

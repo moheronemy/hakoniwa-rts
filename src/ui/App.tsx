@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clearQueue, enqueueCommand, moveCommand, newGame, playerIsland, removeCommand } from '../engine/game';
+import {
+  autoPrepareTargets,
+  clearQueue,
+  enqueueAutoPrepare,
+  enqueueCommand,
+  moveCommand,
+  newGame,
+  playerIsland,
+  removeCommand,
+} from '../engine/game';
+import { COMMANDS } from '../engine/commands';
 import { deserialize, serialize } from '../engine/save';
 import { advanceTurn } from '../engine/turn';
 import type { CommandKind, GameState } from '../engine/types';
@@ -100,6 +110,18 @@ export function App() {
     setGame((g) => (g ? enqueueCommand(g, kind, target.x, target.y, count, insertIndex ?? undefined) : g));
   };
 
+  const handleAutoPrepare = (kind: 'prepare' | 'prepareInstant') => {
+    const total = autoPrepareTargets(island).length;
+    const { state, added } = enqueueAutoPrepare(game, kind, insertIndex ?? undefined);
+    setGame(state);
+    const name = COMMANDS[kind].name;
+    setNotice(
+      added < total
+        ? `荒地${added}か所に${name}を予約しました（予約の空きが足りず、${total - added}か所は入れていません）`
+        : `荒地${added}か所に${name}を予約しました`,
+    );
+  };
+
   const handleNewGame = () => {
     if (!window.confirm('今のゲームを捨てて、新しいゲームを始めますか？')) return;
     setGame(newGame(randomSeed()));
@@ -182,7 +204,13 @@ export function App() {
           <MapCanvas island={island} selected={selected} onSelect={(x, y) => setSelected({ x, y })} />
         </div>
         <div className="side">
-          <CommandMenu island={island} selected={selected} insertBefore={insertIndex} onEnqueue={handleEnqueue} />
+          <CommandMenu
+            island={island}
+            selected={selected}
+            insertBefore={insertIndex}
+            onEnqueue={handleEnqueue}
+            onAutoPrepare={handleAutoPrepare}
+          />
           <QueuePanel
             island={island}
             selectedId={selectedCommand}

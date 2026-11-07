@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { COMMAND_LIST, COMMANDS, targetProblem } from '../engine/commands';
+import { autoPrepareTargets } from '../engine/game';
 import { formatPeople, formatThousands, islandStats, terrainName, tileAt, tileDetail } from '../engine/island';
 import { RULES } from '../engine/rules';
 import type { CommandKind, Island, LogEntry } from '../engine/types';
@@ -81,9 +82,10 @@ interface CommandMenuProps {
   selected: { x: number; y: number } | null;
   insertBefore: number | null;
   onEnqueue: (kind: CommandKind, count: number) => void;
+  onAutoPrepare: (kind: 'prepare' | 'prepareInstant') => void;
 }
 
-export function CommandMenu({ island, selected, insertBefore, onEnqueue }: CommandMenuProps) {
+export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoPrepare }: CommandMenuProps) {
   const [count, setCount] = useState(1);
   const tile = selected ? tileAt(island, selected.x, selected.y) : null;
   const room = RULES.queueMax - island.queue.length;
@@ -139,7 +141,46 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue }: Comma
           );
         })}
       </ul>
+      <AutoInput island={island} room={room} onAutoPrepare={onAutoPrepare} />
     </section>
+  );
+}
+
+function AutoInput({
+  island,
+  room,
+  onAutoPrepare,
+}: {
+  island: Island;
+  room: number;
+  onAutoPrepare: (kind: 'prepare' | 'prepareInstant') => void;
+}) {
+  const targets = autoPrepareTargets(island).length;
+  const disabled = targets === 0 || room <= 0;
+  const reason = targets === 0 ? '予約していない荒地がありません' : room <= 0 ? '予約に空きがありません' : undefined;
+  return (
+    <div className="auto-input">
+      <h3>
+        自動入力 <small className="muted">予約していない荒地 {targets}か所</small>
+      </h3>
+      <div className="auto-buttons">
+        {(['prepare', 'prepareInstant'] as const).map((kind) => {
+          const def = COMMANDS[kind];
+          const n = Math.min(targets, room);
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={disabled}
+              title={reason ?? `荒地${n}か所に${def.name}を予約する（合計${n * def.cost}億円）`}
+              onClick={() => onAutoPrepare(kind)}
+            >
+              {def.name}自動入力
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

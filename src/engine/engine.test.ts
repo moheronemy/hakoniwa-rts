@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { executeCommand, targetProblem } from './commands';
-import { clearQueue, enqueueCommand, moveCommand, newGame, playerIsland, removeCommand } from './game';
+import {
+  autoPrepareTargets,
+  clearQueue,
+  enqueueAutoPrepare,
+  enqueueCommand,
+  moveCommand,
+  newGame,
+  playerIsland,
+  removeCommand,
+} from './game';
 import { generateIsland } from './generate';
 import { neighbors } from './hex';
 import { islandStats, isSea, setTile, tileAt } from './island';
@@ -251,5 +260,55 @@ describe('セーブ', () => {
   it('別の形式のデータは読み込まない', () => {
     expect(() => deserialize('{"foo":1}')).toThrow();
     expect(() => deserialize('not json')).toThrow();
+  });
+});
+
+describe('整地自動入力', () => {
+  function islandWithWaste(): Island {
+    const island = emptyIsland();
+    setTile(island, 1, 0, 'waste');
+    setTile(island, 3, 2, 'waste');
+    setTile(island, 0, 4, 'waste');
+    setTile(island, 2, 2, 'plains');
+    return island;
+  }
+
+  it('すべての荒地に、上から順に整地を予約する', () => {
+    const { state, added } = enqueueAutoPrepare(stateWith(islandWithWaste()), 'prepare');
+    expect(added).toBe(3);
+    expect(playerIsland(state).queue.map((c) => [c.kind, c.x, c.y])).toEqual([
+      ['prepare', 1, 0],
+      ['prepare', 3, 2],
+      ['prepare', 0, 4],
+    ]);
+  });
+
+  it('すでに整地か地ならしを予約している荒地は飛ばす', () => {
+    let state = stateWith(islandWithWaste());
+    state = enqueueCommand(state, 'prepareInstant', 3, 2);
+    expect(autoPrepareTargets(playerIsland(state))).toEqual([{ x: 1, y: 0 }, { x: 0, y: 4 }]);
+    const result = enqueueAutoPrepare(state, 'prepare');
+    expect(result.added).toBe(2);
+  });
+
+  it('選んだ位置に挿入し、既存の予約は消さない', () => {
+    let state = stateWith(islandWithWaste());
+    state = enqueueCommand(state, 'raiseFunds', 0, 0, 2);
+    const { state: next } = enqueueAutoPrepare(state, 'prepareInstant', 1);
+    expect(playerIsland(next).queue.map((c) => c.kind)).toEqual([
+      'raiseFunds',
+      'prepareInstant',
+      'prepareInstant',
+      'prepareInstant',
+      'raiseFunds',
+    ]);
+  });
+
+  it('予約の空き枠を超えては入れない', () => {
+    let state = stateWith(islandWithWaste());
+    state = enqueueCommand(state, 'raiseFunds', 0, 0, RULES.queueMax - 1);
+    const { state: next, added } = enqueueAutoPrepare(state, 'prepare');
+    expect(added).toBe(1);
+    expect(playerIsland(next).queue).toHaveLength(RULES.queueMax);
   });
 });
