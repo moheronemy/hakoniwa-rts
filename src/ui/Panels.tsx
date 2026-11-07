@@ -6,8 +6,14 @@ import { MONSTERS } from '../engine/monsters';
 import { autoPrepareTargets } from '../engine/game';
 import { formatPeople, formatThousands, islandStats, terrainName, tileAt, tileDetail } from '../engine/island';
 import { RULES } from '../engine/rules';
+import { SATELLITES } from '../engine/satellites';
 import { BRANCH_NAMES, canResearch, hasTech, TECH_LIST, TECHS, type Branch } from '../engine/tech';
 import type { CommandKind, Island, LogEntry, TechId } from '../engine/types';
+
+/** 命令の一覧には出さず、専用の欄から予約する命令 */
+const SPECIAL_MENU_KINDS: ReadonlySet<CommandKind> = new Set([
+  'breed', 'sendMonster', 'launchSatellite', 'repairSatellite', 'satelliteLaser',
+]);
 
 export const INTERVAL_OPTIONS = [3000, 5000, 10000, 20000] as const;
 /** 観戦モードで選べる間隔 */
@@ -143,7 +149,7 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoP
         </span>
       </div>
       <ul className="commands">
-        {COMMAND_LIST.filter((def) => !isMissile(def.kind) && def.kind !== 'breed' && def.kind !== 'sendMonster').map((def) => {
+        {COMMAND_LIST.filter((def) => !isMissile(def.kind) && !SPECIAL_MENU_KINDS.has(def.kind)).map((def) => {
           // マスを対象にしない命令（石油の売却など）は、実行するときに条件を確かめるので予約はできる
           const problem = def.targeted
             ? selected
@@ -246,7 +252,13 @@ export function QueuePanel({ island, islandNames, selectedId, onSelect, onMove, 
                 <button type="button" className="queue-item" onClick={() => onSelect(isSelected ? null : command.id)}>
                   <span className="queue-index">{index + 1}</span>
                   <span>{def.name}</span>
-                  {command.kind === 'sendMonster' ? (
+                  {command.satellite ? (
+                    <span className="muted">{SATELLITES[command.satellite].name}</span>
+                  ) : command.kind === 'satelliteLaser' ? (
+                    <span className="muted">
+                      {islandNames[command.targetIslandId ?? ''] ?? '?'} ({command.x}, {command.y})
+                    </span>
+                  ) : command.kind === 'sendMonster' ? (
                     <span className="muted">{islandNames[command.targetIslandId ?? ''] ?? '?'}へ</span>
                   ) : command.kind === 'breed' ? (
                     <span className="muted">

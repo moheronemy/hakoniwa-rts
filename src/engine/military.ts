@@ -74,6 +74,9 @@ export function missileCapacity(island: Island): number {
 /** 撃てない理由（資金・石油は見ない）。撃てるなら null */
 export const PEACEFUL_MESSAGE = '平和モードでは他の島を攻撃できません';
 
+/** 迎撃衛星がミサイルを撃ち落とす確率（satellites.ts の SATELLITE_RULES と同じ値。循環参照を避けるためここに置く） */
+const SATELLITE_INTERCEPT = 0.3;
+
 export function missileProblem(
   world: Pick<World, 'islands' | 'turn' | 'peaceful'>,
   island: Island,
@@ -270,6 +273,11 @@ export function fireMissiles(
         (p) => tileAt(target, p.x, p.y).kind === 'interceptor' && hexDistance(p.x, p.y, land.x, land.y) <= RULES.interceptRange,
       );
       if (covered && !targetsInterceptor && rng.next() < chance) {
+        intercepted++;
+        continue;
+      }
+      // 迎撃衛星（他の島から飛んできた弾だけ）
+      if (target.id !== island.id && (target.satellites.intercept ?? 0) > 0 && rng.next() < SATELLITE_INTERCEPT) {
         intercepted++;
         continue;
       }

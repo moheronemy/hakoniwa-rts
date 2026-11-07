@@ -1,6 +1,6 @@
 import type { Island, Research, TechId } from './types';
 
-export type Branch = 'civil' | 'industry' | 'energy' | 'military' | 'bio';
+export type Branch = 'civil' | 'industry' | 'energy' | 'military' | 'bio' | 'space';
 
 export const BRANCH_NAMES: Record<Branch, string> = {
   civil: '土木',
@@ -8,6 +8,7 @@ export const BRANCH_NAMES: Record<Branch, string> = {
   energy: 'エネルギー',
   military: '軍事',
   bio: '生物',
+  space: '宇宙',
 };
 
 export interface TechDef {
@@ -44,6 +45,11 @@ export const TECH_LIST: readonly TechDef[] = [
   { id: 'bio2', branch: 'bio', name: '怪獣強化', cost: 1500, requires: 'bio1', description: '段階2の怪獣（M3・M4）を育てられる' },
   { id: 'bio3', branch: 'bio', name: '怪獣改良', cost: 2500, requires: 'bio2', description: '段階3の怪獣（M5・M6）を育てられる' },
   { id: 'bio4', branch: 'bio', name: '究極の怪獣', cost: 4000, requires: 'bio3', description: '段階4の怪獣（M7・M8）を育てられる' },
+  { id: 'rocket', branch: 'space', name: '宇宙開発', cost: 1000, requires: null, description: '気象衛星を打ち上げられる（台風が起きにくくなる）' },
+  { id: 'observeSat', branch: 'space', name: '観測衛星', cost: 1500, requires: 'rocket', description: '観測衛星を打ち上げられる（地震・津波・噴火が減り、他の島の基地が見える）' },
+  { id: 'interceptSat', branch: 'space', name: '迎撃衛星', cost: 2500, requires: 'observeSat', description: '迎撃衛星を打ち上げられる（隕石が減り、飛んできたミサイルを撃ち落とす）' },
+  { id: 'militarySat', branch: 'space', name: '軍事衛星', cost: 4000, requires: 'interceptSat', description: '軍事衛星を打ち上げられる（衛星レーザーで狙ったマスを確実に壊す）' },
+  { id: 'launchUp', branch: 'space', name: '打ち上げ改良', cost: 1200, requires: 'rocket', description: '衛星の打ち上げに失敗する確率が半分になる' },
 ];
 
 export const TECHS: Readonly<Record<TechId, TechDef>> = Object.fromEntries(

@@ -6,7 +6,9 @@ import {
   enqueueAutoPrepare,
   enqueueBreed,
   enqueueCommand,
+  enqueueLaser,
   enqueueMissile,
+  enqueueSatellite,
   enqueueSendMonster,
   moveCommand,
   newGame,
@@ -18,8 +20,10 @@ import {
 import { visibleTile } from '../engine/island';
 import { deserialize, serialize } from '../engine/save';
 import { advanceTurn } from '../engine/turn';
-import type { CommandKind, GameSettings, GameState, MissileKind, MonsterId } from '../engine/types';
+import { canSeeHiddenBases } from '../engine/satellites';
+import type { CommandKind, GameSettings, GameState, MissileKind, MonsterId, SatelliteKind } from '../engine/types';
 import { MapCanvas, type MapMarker } from './MapCanvas';
+import { LaserPanel, SatellitePanel } from './SatellitePanels';
 import {
   CommandMenu,
   INTERVAL_OPTIONS,
@@ -242,6 +246,15 @@ export function App() {
     setGame((g) => (g ? enqueueBreed(g, selected.x, selected.y, monster, insertIndex ?? undefined) : g));
   };
 
+  const handleSatellite = (kind: 'launchSatellite' | 'repairSatellite', satellite: SatelliteKind) => {
+    setGame((g) => (g ? enqueueSatellite(g, kind, satellite, insertIndex ?? undefined) : g));
+  };
+
+  const handleLaser = () => {
+    if (!selected) return;
+    setGame((g) => (g ? enqueueLaser(g, viewed.id, selected.x, selected.y, insertIndex ?? undefined) : g));
+  };
+
   const handleSend = () => {
     setGame((g) => (g ? enqueueSendMonster(g, viewed.id, insertIndex ?? undefined) : g));
   };
@@ -381,6 +394,11 @@ export function App() {
           <SendMonsterPanel game={game} player={island} target={viewed} onSend={handleSend} />
         </>
       )}
+      {viewingOwn ? (
+        <SatellitePanel island={island} insertBefore={insertIndex} onOrder={handleSatellite} />
+      ) : (
+        <LaserPanel game={game} player={island} target={viewed} selected={selected} onFire={handleLaser} />
+      )}
       <QueuePanel
         island={island}
         islandNames={islandNames}
@@ -420,7 +438,7 @@ export function App() {
             selected={selected}
             onSelect={(x, y) => setSelected({ x, y })}
             markers={markers}
-            display={viewingOwn || spectating ? undefined : visibleTile}
+            display={viewingOwn || spectating || canSeeHiddenBases(island) ? undefined : visibleTile}
             dimmed={viewed.destroyed}
           />
         </div>

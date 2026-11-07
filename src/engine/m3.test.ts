@@ -28,6 +28,7 @@ function island(id: string, size = 8): Island {
     emptyTurns: 0,
     lastAttackedBy: null,
     breeding: [],
+    satellites: {},
   };
 }
 
@@ -224,7 +225,7 @@ describe('弾の効果', () => {
 
 function gameWith(islands: Island[], turn = 0): GameState {
   return {
-    version: 4,
+    version: 5,
     turn,
     rngState: 9,
     islands,
@@ -349,7 +350,7 @@ describe('セーブデータの移行', () => {
       state: { version: 2, turn: 50, rngState: 5, islands: [v2Island], playerIslandId: 'player', log: [], nextCommandId: 3 },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.islands).toHaveLength(4);
     expect(state.islands[0]!.controller).toBe('player');
     expect(state.settings).toEqual(DEFAULT_SETTINGS);

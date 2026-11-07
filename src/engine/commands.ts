@@ -5,7 +5,8 @@ import { PLANTS, RULES, type PlantKind } from './rules';
 import { fireMissiles, isMissile, MISSILE_LIST, PEACEFUL_MESSAGE, type World } from './military';
 import { BREED_STAGES, MONSTERS, placeMonster } from './monsters';
 import { hasTech, TECHS } from './tech';
-import type { CommandKind, Island, MonsterId, TerrainKind } from './types';
+import { fireLaser, launchSatellite, repairSatellite, SATELLITE_RULES } from './satellites';
+import type { CommandKind, Island, MonsterId, SatelliteKind, TerrainKind } from './types';
 
 /** 1ターンの中で命令が残す効果（誘致活動など） */
 export interface TurnEffects {
@@ -20,11 +21,12 @@ export interface CommandContext {
   world?: World;
 }
 
-/** ミサイル・怪獣の命令に付く情報 */
+/** ミサイル・怪獣・衛星の命令に付く情報 */
 export interface CommandExtra {
   targetIslandId?: string;
   count?: number;
   monster?: MonsterId;
+  satellite?: SatelliteKind;
 }
 
 export interface CommandDef {
@@ -461,6 +463,43 @@ export function readyMonsters(island: Island, turn: number) {
   return island.breeding.filter((b) => b.readyTurn <= turn);
 }
 
+// 人工衛星の命令。実行は executeCommand の中で satellites.ts に回す
+DEFS.push(
+  {
+    kind: 'launchSatellite',
+    name: '人工衛星打ち上げ',
+    cost: 0,
+    targeted: false,
+    instant: false,
+    description: '人工衛星を打ち上げる。費用と成功率は種類で決まり、失敗すると費用だけかかる',
+    apply: () => {
+      throw new Error('人工衛星打ち上げは executeCommand で実行する');
+    },
+  },
+  {
+    kind: 'repairSatellite',
+    name: '人工衛星修復',
+    cost: 0,
+    targeted: false,
+    instant: false,
+    description: '人工衛星の耐久を戻す（費用は打ち上げの半分）',
+    apply: () => {
+      throw new Error('人工衛星修復は executeCommand で実行する');
+    },
+  },
+  {
+    kind: 'satelliteLaser',
+    name: '衛星レーザー',
+    cost: SATELLITE_RULES.laserCost,
+    targeted: true,
+    instant: false,
+    description: '軍事衛星から、狙ったマスを確実に壊す（迎撃されない）。軍事衛星の耐久が減る',
+    apply: () => {
+      throw new Error('衛星レーザーは executeCommand で実行する');
+    },
+  },
+);
+
 // ミサイルの命令。実行は executeCommand から fireMissiles に回す
 for (const m of MISSILE_LIST) {
   DEFS.push({
@@ -518,6 +557,12 @@ export function executeCommand(
   const def = COMMANDS[kind];
   if (kind === 'breed') return breed(island, x, y, extra.monster, ctx);
   if (kind === 'sendMonster') return sendMonster(island, extra.targetIslandId, ctx);
+  if (kind === 'launchSatellite') return asCommandResult(launchSatellite(island, extra.satellite, ctx.rng));
+  if (kind === 'repairSatellite') return asCommandResult(repairSatellite(island, extra.satellite));
+  if (kind === 'satelliteLaser') {
+    if (!ctx.world) return { ok: false, message: '衛星レーザー：目標の島がありません' };
+    return asCommandResult(fireLaser(ctx.world, island, x, y, extra.targetIslandId));
+  }
   if (isMissile(kind)) {
     if (!ctx.world) return { ok: false, message: `${def.name}：目標の島がありません` };
     const result = fireMissiles(ctx.world, island, kind, x, y, extra.targetIslandId, extra.count ?? 0, ctx.rng);
@@ -572,4 +617,10 @@ function sendMonster(island: Island, targetIslandId: string | undefined, ctx: Co
     involves: [island.id],
   });
   return { ok: true, consumedTurn: true, message: `${target.name}に${def.name}を送り込んだ`, tone: 'good' };
+}
+
+function asCommandResult(
+  result: { ok: true; message: string; tone: 'good' | 'bad' } | { ok: false; message: string },
+): CommandResult {
+  return result.ok ? { ...result, consumedTurn: true } : result;
 }

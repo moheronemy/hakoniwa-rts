@@ -2,6 +2,7 @@ import { cellsWithin, hexDistance, inBounds, neighbors } from './hex';
 import { isSea, setTile, terrainName, tileAt } from './island';
 import type { Rng } from './rng';
 import { RULES } from './rules';
+import { disasterFactor } from './satellites';
 import type { Island, TerrainKind } from './types';
 
 /**
@@ -35,7 +36,8 @@ const TSUNAMI_TARGETS: ReadonlySet<TerrainKind> = new Set([
 export function runDisasters(island: Island, rng: Rng, level: number, log: Logger): void {
   if (level <= 0) return;
   for (const kind of Object.keys(DISASTER_CHANCES) as DisasterKind[]) {
-    if (rng.next() < DISASTER_CHANCES[kind] * level) applyDisaster(island, kind, rng, log);
+    // 人工衛星（気象・観測・迎撃）があると起きにくい
+    if (rng.next() < DISASTER_CHANCES[kind] * level * disasterFactor(island, kind)) applyDisaster(island, kind, rng, log);
   }
 }
 

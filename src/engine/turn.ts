@@ -5,6 +5,7 @@ import { incomeBreakdown } from './forecast';
 import { hasAdjacent, islandStats, setTile } from './island';
 import type { World } from './military';
 import { moveMonsters, spawnWildMonster } from './monsters';
+import { decaySatellites } from './satellites';
 import { computePower, labPoints } from './power';
 import { Rng } from './rng';
 import { RULES } from './rules';
@@ -201,6 +202,7 @@ function processIsland(
   produceOil(island, log);
   const effects = runCommands(island, rng, log, world);
   doResearch(island, power.ratio, log);
+  decaySatellites(island, notableLog);
   dropLostBreeding(island);
   moveMonsters(island, rng, world.turn, notableLog);
   grow(island, rng, effects, power.ratio);
@@ -260,6 +262,7 @@ function runCommands(island: Island, rng: Rng, log: Logger, world: World): TurnE
       targetIslandId: command.targetIslandId,
       count: command.count,
       monster: command.monster,
+      satellite: command.satellite,
     });
     if (!result.ok) {
       log(result.message, 'bad');

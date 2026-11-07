@@ -34,6 +34,7 @@ export function generateIsland(
     emptyTurns: 0,
     lastAttackedBy: null,
     breeding: [],
+    satellites: {},
   };
 
   const center = Math.floor(size / 2) - 1;

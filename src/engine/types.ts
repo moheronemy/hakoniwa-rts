@@ -54,7 +54,13 @@ export type CommandKind =
   | 'monsterLab' // 怪獣研究所建設
   | 'breed' // 怪獣を育てる
   | 'sendMonster' // 怪獣派遣
+  | 'launchSatellite' // 人工衛星打ち上げ
+  | 'repairSatellite' // 人工衛星修復
+  | 'satelliteLaser' // 衛星レーザー
   | MissileKind;
+
+/** 人工衛星の種類（仕様書24章） */
+export type SatelliteKind = 'weather' | 'observation' | 'intercept' | 'military';
 
 /** 怪獣の種類（仕様書8章・19章） */
 export type MonsterId = 'm1' | 'm2' | 'm3' | 'm4' | 'm5' | 'm6' | 'm7' | 'm8';
@@ -100,7 +106,12 @@ export type TechId =
   | 'bio1' // 怪獣研究
   | 'bio2' // 怪獣強化
   | 'bio3' // 怪獣改良
-  | 'bio4'; // 究極の怪獣
+  | 'bio4' // 究極の怪獣
+  | 'rocket' // 宇宙開発
+  | 'observeSat' // 観測衛星
+  | 'interceptSat' // 迎撃衛星
+  | 'militarySat' // 軍事衛星
+  | 'launchUp'; // 打ち上げ改良
 
 export interface Research {
   /** まだどの技術にも注いでいない研究ポイント */
@@ -126,6 +137,8 @@ export interface Command {
   count?: number;
   /** 育てる怪獣の種類 */
   monster?: MonsterId;
+  /** 打ち上げ・修復する衛星の種類 */
+  satellite?: SatelliteKind;
 }
 
 /** 島の持ち主。player 以外は AI の性格 */
@@ -156,6 +169,8 @@ export interface Island {
   lastAttackedBy: { islandId: string; turn: number } | null;
   /** 怪獣研究所で育てている（育ち上がった）怪獣 */
   breeding: Breeding[];
+  /** 打ち上げた人工衛星の耐久（ないものは入っていない） */
+  satellites: Partial<Record<SatelliteKind, number>>;
 }
 
 export type LogTone = 'info' | 'good' | 'bad';
@@ -202,7 +217,7 @@ export interface Outcome {
 
 export interface GameState {
   /** セーブデータの形式のバージョン */
-  version: 4;
+  version: 5;
   /** 処理済みのターン数 */
   turn: number;
   /** 乱数の内部状態 */

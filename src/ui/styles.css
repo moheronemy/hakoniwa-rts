@@ -588,3 +588,30 @@ button.primary {
 .dialog label.checkbox {
   justify-content: flex-start;
 }
+
+/* 人工衛星 */
+.commands.satellites {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.satellite-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.satellite-name {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.satellite-desc {
+  margin: 0;
+  font-size: 0.8em;
+  flex: 1;
+}
+
+.commands .satellite-row button {
+  height: auto;
+}
