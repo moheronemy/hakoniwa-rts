@@ -88,6 +88,23 @@ function count(island: Island, kind: TerrainKind): number {
  * 住宅地には建てない（人口を減らさないため）。
  */
 function findSite(island: Island, kind: CommandKind, rng: Rng, prefer?: (x: number, y: number) => number): Command | null {
+  return findSiteIn(island, kind, rng, prefer, false);
+}
+
+/**
+ * 平地などが見つからなければ、人口のいちばん少ない住宅地に建てる（狭い島で農場や工場を作るため）。
+ */
+function findSiteOrTown(island: Island, kind: 'farm' | 'factory' | 'lab', rng: Rng): Command | null {
+  return findSiteIn(island, kind, rng, undefined, false) ?? findSiteIn(island, kind, rng, (x, y) => -tileAt(island, x, y).value, true);
+}
+
+function findSiteIn(
+  island: Island,
+  kind: CommandKind,
+  rng: Rng,
+  prefer: ((x: number, y: number) => number) | undefined,
+  townsOnly: boolean,
+): Command | null {
   if (island.money < commandCost(island, kind)) return null;
   const order = rng.permutation(island.tiles.length);
   let best: { x: number; y: number; score: number } | null = null;
@@ -95,7 +112,7 @@ function findSite(island: Island, kind: CommandKind, rng: Rng, prefer?: (x: numb
     const x = index % island.size;
     const y = Math.floor(index / island.size);
     const tile = tileAt(island, x, y);
-    if (tile.kind === 'town') continue;
+    if ((tile.kind === 'town') !== townsOnly) continue;
     if (targetProblem(island, kind, x, y) !== null) continue;
     // 重ねて建てられるならそれを優先する
     const upgrade = tile.kind === kind || (kind === 'farm' && tile.kind === 'farm') || (kind === 'factory' && tile.kind === 'factory');
@@ -123,9 +140,15 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
   const stats = islandStats(island);
   const attacked = island.lastAttackedBy !== null && turn - island.lastAttackedBy.turn < 100;
 
-  // 1. 食料
+  // 1. 食料（平地がなければ、人口の少ない村を農場にする）
   if (f.food < Math.max(3, stats.pop * 0.02)) {
-    const c = findSite(island, 'farm', rng);
+    const c = findSiteOrTown(island, 'farm', rng);
+    if (c) return c;
+  }
+
+  // 1.5 島が狭いので、平地や荒地が少なくなったら埋め立てで広げる
+  if (count(island, 'plains') + count(island, 'waste') < 4 && island.money > 300) {
+    const c = findSite(island, 'reclaim', rng, (x, y) => (tileAt(island, x, y).kind === 'shallow' ? 1 : 0));
     if (c) return c;
   }
 
@@ -143,7 +166,13 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
 
   // 3.5 工場（働き口が足りない）。収入の元なので、軍備や研究より先に建てる
   if (stats.pop - stats.farm * 10 > stats.factory * 10 && f.power.supply >= f.power.demand) {
-    const c = findSite(island, 'factory', rng);
+    const c = findSiteOrTown(island, 'factory', rng);
+    if (c) return c;
+  }
+
+  // 3.6 研究所が1つもなければ建てる（狭い島では後回しにすると、いつまでも建たない）
+  if (count(island, 'lab') === 0 && turn > 30 && island.money > 600) {
+    const c = findSiteOrTown(island, 'lab', rng);
     if (c) return c;
   }
 
@@ -196,8 +225,8 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     if (prepare) return prepare;
   }
 
-  // 12. 平地がなくなったら浅瀬を埋め立てる
-  if (count(island, 'plains') < 3) {
+  // 12. 資金に余裕があれば、埋め立てで島を広げる
+  if (island.money > 1500) {
     const c = findSite(island, 'reclaim', rng, (x, y) => (tileAt(island, x, y).kind === 'shallow' ? 1 : 0));
     if (c) return c;
   }

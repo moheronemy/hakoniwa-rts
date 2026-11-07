@@ -209,7 +209,7 @@ function processIsland(
     runDisasters(island, rng, disasterLevel, notableLog);
     spawnWildMonster(island, rng, disasterLevel, notableLog);
   }
-  handleFoodShortage(island, rng, notableLog);
+  handleFoodShortage(island, rng, notableLog, world.turn > RULES.protectionTurns);
 }
 
 /** 怪獣研究所が壊れたら、そこで育てていた怪獣もいなくなる */
@@ -322,11 +322,15 @@ function grow(island: Island, rng: Rng, effects: TurnEffects, powerRatio: number
   }
 }
 
-/** 食料不足：食料を0に戻し、農場と工場が暴動で壊れることがある */
-function handleFoodShortage(island: Island, rng: Rng, log: Logger): void {
+/**
+ * 食料不足：食料を0に戻し、農場と工場が暴動で壊れることがある。
+ * 序盤の保護の間は暴動は起きない（農場が1つしかない初期の島が、操作を覚える前に飢えて滅亡しないように）。
+ */
+function handleFoodShortage(island: Island, rng: Rng, log: Logger, riots: boolean): void {
   if (island.food >= 0) return;
   island.food = 0;
   log('食料が不足している！ 人口が減っている', 'bad');
+  if (!riots) return;
   for (let index = 0; index < island.tiles.length; index++) {
     const tile = island.tiles[index]!;
     if (tile.kind !== 'farm' && tile.kind !== 'factory') continue;

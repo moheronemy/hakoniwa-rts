@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, enqueueMissile, newGame, playerIsland } from './game';
+import { DEFAULT_SETTINGS, enqueueMissile, newGame, newSpectatorGame, playerIsland } from './game';
 import { generateIsland } from './generate';
 import { cellsWithin, hexDistance, neighbors } from './hex';
 import { baseLevel, setTile, tileAt, visibleTile } from './island';
@@ -324,14 +324,15 @@ describe('AI', () => {
   });
 
   it('AI は300ターンで島を発展させ、研究を進める。同じ入力なら同じ結果になる', () => {
-    let a = newGame(7);
+    // 何もしないプレイヤーの島が先に滅亡して止まらないよう、4島すべてが AI の観戦モードで確かめる
+    let a = newSpectatorGame(7);
     for (let i = 0; i < 300; i++) a = advanceTurn(a);
-    for (const ai of a.islands.filter((i) => i.controller !== 'player')) {
+    for (const ai of a.islands) {
       expect(ai.destroyed).toBe(false);
       expect(ai.research.done.length).toBeGreaterThan(0);
       expect(ai.tiles.some((t) => t.kind === 'windPower' || t.kind === 'hydroPower' || t.kind === 'thermalPower')).toBe(true);
     }
-    let b = newGame(7);
+    let b = newSpectatorGame(7);
     for (let i = 0; i < 300; i++) b = advanceTurn(b);
     expect(b).toEqual(a);
   });

@@ -99,12 +99,21 @@ describe('generateIsland', () => {
     expect(a.tiles).toHaveLength(RULES.islandSize * RULES.islandSize);
   });
 
-  it('村2つ・山2つ・森6つを置く', () => {
+  it('原作と同じく森4つ・村2つ・山1つを置き、農場を1つ加える', () => {
     const island = generateIsland(new Rng(99), 'a', 'A');
     const count = (kind: string) => island.tiles.filter((t) => t.kind === kind).length;
+    expect(count('forest')).toBe(4);
     expect(count('town')).toBe(2);
-    expect(count('mountain')).toBe(2);
-    expect(count('forest')).toBe(6);
+    expect(count('mountain')).toBe(1);
+    expect(count('farm')).toBe(1);
+  });
+
+  it('陸地は原作と同じくらい（およそ25〜40マス）になる', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { area } = islandStats(generateIsland(new Rng(seed * 31), 'a', 'A'));
+      expect(area).toBeGreaterThanOrEqual(20);
+      expect(area).toBeLessThanOrEqual(45);
+    }
   });
 });
 

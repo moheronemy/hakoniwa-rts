@@ -25,7 +25,7 @@ export const CONTROLLER_NAMES: Record<Controller, string> = {
   tamer: '怪獣使い型',
 };
 
-export const ECONOMIC_TARGET_OPTIONS = [6000, 8000, 12000] as const; // 60万・80万・120万人
+export const ECONOMIC_TARGET_OPTIONS = [3000, 4500, 6000] as const; // 30万・45万・60万人
 export const TURN_LIMIT_OPTIONS = [1000, 2000, 3000] as const;
 
 export const DISASTER_LEVEL_OPTIONS = [
@@ -34,7 +34,7 @@ export const DISASTER_LEVEL_OPTIONS = [
   { value: 1, label: 'ふつう' },
 ] as const;
 
-export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 8000, turnLimit: 2000, disasterLevel: 1 };
+export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 4500, turnLimit: 2000, disasterLevel: 1 };
 
 /** AI の島を3つ作る */
 export function generateAiIslands(rng: Rng): Island[] {
