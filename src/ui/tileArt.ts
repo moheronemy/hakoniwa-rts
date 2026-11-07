@@ -1,3 +1,4 @@
+import { baseLevel } from '../engine/island';
 import { RULES } from '../engine/rules';
 import type { Tile } from '../engine/types';
 
@@ -164,6 +165,28 @@ export function drawTile(ctx: Ctx, tile: Tile, ox: number, oy: number): void {
       px(ctx, '#5c6bc0', ox + 13, oy + 4, 6, 6);
       for (let i = 0; i < 3; i++) px(ctx, '#7986cb', ox + 7 + i * 7, oy + 16, 4, 4);
       drawLevel(ctx, ox, oy, tile.value);
+      break;
+    case 'missileBase':
+      grass(ctx, ox, oy);
+      px(ctx, '#6d6d6d', ox + 4, oy + 22, 24, 7);
+      px(ctx, '#eeeeee', ox + 14, oy + 6, 4, 16);
+      px(ctx, '#e53935', ox + 14, oy + 3, 4, 3);
+      px(ctx, '#9e9e9e', ox + 12, oy + 18, 8, 4);
+      drawLevel(ctx, ox, oy, baseLevel(tile));
+      break;
+    case 'seaBase':
+      base(ctx, ox, oy, '#1e4f91');
+      px(ctx, '#0d2c55', ox + 5, oy + 14, 22, 10);
+      px(ctx, '#eeeeee', ox + 14, oy + 6, 4, 8);
+      px(ctx, '#e53935', ox + 14, oy + 4, 4, 2);
+      drawLevel(ctx, ox, oy, baseLevel(tile));
+      break;
+    case 'interceptor':
+      grass(ctx, ox, oy);
+      px(ctx, '#546e7a', ox + 6, oy + 18, 20, 10);
+      px(ctx, '#90a4ae', ox + 9, oy + 10, 14, 8);
+      px(ctx, '#b0bec5', ox + 20, oy + 4, 3, 8);
+      px(ctx, '#b0bec5', ox + 9, oy + 4, 3, 8);
       break;
     default: {
       const unreachable: never = tile.kind;

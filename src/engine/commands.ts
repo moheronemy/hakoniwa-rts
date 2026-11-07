@@ -2,6 +2,7 @@ import { hasAdjacent, isSea, setTile, terrainName, tileAt } from './island';
 import { neighbors } from './hex';
 import type { Rng } from './rng';
 import { PLANTS, RULES, type PlantKind } from './rules';
+import { fireMissiles, isMissile, MISSILE_LIST, type World } from './military';
 import { hasTech } from './tech';
 import type { CommandKind, Island, TerrainKind } from './types';
 
@@ -14,6 +15,14 @@ export interface TurnEffects {
 export interface CommandContext {
   effects: TurnEffects;
   rng: Rng;
+  /** 他の島に関わる命令（ミサイル）で使う。ないとミサイルは撃てない */
+  world?: World;
+}
+
+/** ミサイルの命令に付く情報 */
+export interface CommandExtra {
+  targetIslandId?: string;
+  count?: number;
 }
 
 export interface CommandDef {
@@ -267,6 +276,46 @@ const DEFS: CommandDef[] = [
     `1段階につき毎ターン研究ポイント${RULES.researchPerLab}。電力${RULES.powerPerLab}万kWを使う（最大${RULES.labMax}段階）`,
   ),
   {
+    kind: 'missileBase',
+    name: 'ミサイル基地建設',
+    cost: 300,
+    targeted: true,
+    instant: false,
+    description: `ミサイルを撃つ基地。他の島からは森に見える。経験値でレベルが上がり、1回に撃てる数が増える。電力${RULES.powerPerMissileBase}万kW`,
+    checkTarget: requireKinds(new Set(['plains']), '平地'),
+    apply: (island, x, y) => {
+      setTile(island, x, y, 'missileBase', 0);
+      return { message: `${at(x, y)} にミサイル基地を建てた` };
+    },
+  },
+  {
+    kind: 'seaBase',
+    name: '海底基地建設',
+    cost: 3000,
+    targeted: true,
+    instant: false,
+    description: `深い海に建てる基地。他の島からは海に見え、直撃でしか壊れない。電力${RULES.powerPerSeaBase}万kW。研究「海底基地」が必要`,
+    checkIsland: (island) => (hasTech(island, 'seaBaseTech') ? null : '研究「海底基地」が必要です'),
+    checkTarget: requireKinds(new Set(['deepSea']), '深い海'),
+    apply: (island, x, y) => {
+      setTile(island, x, y, 'seaBase', 0);
+      return { message: `${at(x, y)} に海底基地を建てた` };
+    },
+  },
+  {
+    kind: 'interceptor',
+    name: '迎撃施設建設',
+    cost: 800,
+    targeted: true,
+    instant: false,
+    description: `周囲${RULES.interceptRange}マスに落ちるミサイルを${Math.round(RULES.interceptChance * 100)}%の確率で撃ち落とす。電力${RULES.powerPerInterceptor}万kW`,
+    checkTarget: requireKinds(new Set(['plains']), '平地'),
+    apply: (island, x, y) => {
+      setTile(island, x, y, 'interceptor', 0);
+      return { message: `${at(x, y)} に迎撃施設を建てた` };
+    },
+  },
+  {
     kind: 'oilSearch',
     name: '油田探し',
     cost: 300,
@@ -336,6 +385,21 @@ const DEFS: CommandDef[] = [
   },
 ];
 
+// ミサイルの命令。実行は executeCommand から fireMissiles に回す
+for (const m of MISSILE_LIST) {
+  DEFS.push({
+    kind: m.kind,
+    name: `${m.name}発射`,
+    cost: m.money,
+    targeted: true,
+    instant: false,
+    description: `${m.description}。1発 ${m.money}億円・石油${m.oil}`,
+    apply: () => {
+      throw new Error('ミサイルは fireMissiles で実行する');
+    },
+  });
+}
+
 export const COMMANDS: Readonly<Record<CommandKind, CommandDef>> = Object.fromEntries(
   DEFS.map((d) => [d.kind, d]),
 ) as Record<CommandKind, CommandDef>;
@@ -373,8 +437,14 @@ export function executeCommand(
   x: number,
   y: number,
   ctx: CommandContext,
+  extra: CommandExtra = {},
 ): CommandResult {
   const def = COMMANDS[kind];
+  if (isMissile(kind)) {
+    if (!ctx.world) return { ok: false, message: `${def.name}：目標の島がありません` };
+    const result = fireMissiles(ctx.world, island, kind, x, y, extra.targetIslandId, extra.count ?? 0, ctx.rng);
+    return result.ok ? { ok: true, consumedTurn: true, message: result.message, tone: 'good' } : result;
+  }
   const label = `${def.name}${def.targeted ? ` ${at(x, y)}` : ''}`;
   const problem = targetProblem(island, kind, x, y);
   if (problem) return { ok: false, message: `${label}：${problem}` };

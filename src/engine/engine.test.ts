@@ -6,6 +6,7 @@ import {
   enqueueAutoPrepare,
   enqueueCommand,
   moveCommand,
+  DEFAULT_SETTINGS,
   newGame,
   playerIsland,
   removeCommand,
@@ -32,6 +33,10 @@ function emptyIsland(size = 6): Island {
     oil: 0,
     research: newResearch(),
     queue: [],
+    controller: 'player',
+    destroyed: false,
+    emptyTurns: 0,
+    lastAttackedBy: null,
   };
 }
 
@@ -41,13 +46,15 @@ function ctx(seed = 1): CommandContext {
 
 function stateWith(island: Island): GameState {
   return {
-    version: 2,
+    version: 3,
     turn: 0,
     rngState: 42,
     islands: [island],
     playerIslandId: island.id,
     log: [],
     nextCommandId: 1,
+    settings: DEFAULT_SETTINGS,
+    outcome: null,
   };
 }
 

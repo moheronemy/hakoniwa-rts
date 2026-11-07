@@ -1,11 +1,12 @@
 import type { Island, Research, TechId } from './types';
 
-export type Branch = 'civil' | 'industry' | 'energy';
+export type Branch = 'civil' | 'industry' | 'energy' | 'military';
 
 export const BRANCH_NAMES: Record<Branch, string> = {
   civil: '土木',
   industry: '産業',
   energy: 'エネルギー',
+  military: '軍事',
 };
 
 export interface TechDef {
@@ -31,6 +32,13 @@ export const TECH_LIST: readonly TechDef[] = [
   { id: 'turbine', branch: 'energy', name: '高効率タービン', cost: 900, requires: 'betterWind', description: '水力と火力の発電の出力が25%増える' },
   { id: 'grid', branch: 'energy', name: '送電網', cost: 1500, requires: 'turbine', description: '電力の消費が15%減る' },
   { id: 'nuclear', branch: 'energy', name: '原子力', cost: 2400, requires: 'grid', description: '原子力発電所を建てられるようになる' },
+  { id: 'guidance', branch: 'military', name: '精密誘導', cost: 600, requires: null, description: '精密弾を撃てるようになる' },
+  { id: 'pinpoint', branch: 'military', name: 'ピンポイント誘導', cost: 1500, requires: 'guidance', description: '高精度弾を撃てるようになる' },
+  { id: 'landBuster', branch: 'military', name: '陸地破壊弾', cost: 2000, requires: 'guidance', description: '陸地破壊弾を撃てるようになる' },
+  { id: 'nukeTech', branch: 'military', name: '核弾頭', cost: 4000, requires: 'landBuster', description: '核弾頭を撃てるようになる' },
+  { id: 'interceptUp', branch: 'military', name: '迎撃改良', cost: 900, requires: null, description: '迎撃の確率が70%から85%になる' },
+  { id: 'seaBaseTech', branch: 'military', name: '海底基地', cost: 1200, requires: null, description: '海底基地を建てられるようになる' },
+  { id: 'baseAuto', branch: 'military', name: '基地の自動化', cost: 1000, requires: null, description: 'ミサイル基地と海底基地の電力消費が半分になる' },
 ];
 
 export const TECHS: Readonly<Record<TechId, TechDef>> = Object.fromEntries(
