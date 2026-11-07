@@ -1,6 +1,7 @@
 import { hasAdjacent, isSea, setTile, tileAt } from './island';
 import type { Rng } from './rng';
 import { RULES } from './rules';
+import { newResearch } from './tech';
 import type { Island } from './types';
 
 /**
@@ -15,6 +16,8 @@ export function generateIsland(rng: Rng, id: string, name: string, size: number 
     tiles: Array.from({ length: size * size }, () => ({ kind: 'deepSea' as const, value: 0 })),
     money: RULES.initialMoney,
     food: RULES.initialFood,
+    oil: 0,
+    research: newResearch(),
     queue: [],
   };
 
