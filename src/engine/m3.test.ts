@@ -27,6 +27,7 @@ function island(id: string, size = 8): Island {
     destroyed: false,
     emptyTurns: 0,
     lastAttackedBy: null,
+    breeding: [],
   };
 }
 
@@ -95,12 +96,12 @@ describe('基地と見え方', () => {
 });
 
 describe('ミサイルを撃てる条件', () => {
-  it('序盤の保護、基地なし、研究なし、自分の島、滅亡した島では撃てない', () => {
+  it('序盤の保護、基地なし、研究なし、滅亡した島では撃てない。自分の島へは序盤でも撃てる', () => {
     const { a, b, w } = twoIslands();
     expect(missileProblem(w, a, 'missileNormal', 'b')).toBeNull();
     expect(missileProblem({ ...w, turn: RULES.protectionTurns }, a, 'missileNormal', 'b')).toContain('攻撃できません');
     expect(missileProblem(w, a, 'missilePrecise', 'b')).toContain('精密誘導');
-    expect(missileProblem(w, a, 'missileNormal', 'a')).not.toBeNull();
+    expect(missileProblem({ ...w, turn: 1 }, a, 'missileNormal', 'a')).toBeNull();
     expect(missileProblem(w, b, 'missileNormal', 'a')).toBe('ミサイル基地がありません');
     b.destroyed = true;
     expect(missileProblem(w, a, 'missileNormal', 'b')).toContain('滅亡');
@@ -223,7 +224,7 @@ describe('弾の効果', () => {
 
 function gameWith(islands: Island[], turn = 0): GameState {
   return {
-    version: 3,
+    version: 4,
     turn,
     rngState: 9,
     islands,
@@ -315,9 +316,9 @@ describe('AI', () => {
     const state = newGame(1);
     expect(state.islands).toHaveLength(4);
     expect(state.islands.filter((i) => i.controller !== 'player').map((i) => i.controller).sort()).toEqual([
-      'balanced',
       'economic',
       'military',
+      'tamer',
     ]);
     expect(playerIsland(state).tiles.some((t) => t.kind === 'farm')).toBe(true);
   });
@@ -339,7 +340,7 @@ describe('AI', () => {
 describe('セーブデータの移行', () => {
   it('版2（M2）のセーブデータに AI の島を足して読み込む', () => {
     const v2Island: Record<string, unknown> = { ...generateIsland(new Rng(1), 'player', 'あなたの島') };
-    for (const key of ['controller', 'destroyed', 'emptyTurns', 'lastAttackedBy']) delete v2Island[key];
+    for (const key of ['controller', 'destroyed', 'emptyTurns', 'lastAttackedBy', 'breeding']) delete v2Island[key];
     const text = JSON.stringify({
       format: 'hakoniwa-rts-save',
       version: 2,
@@ -347,7 +348,7 @@ describe('セーブデータの移行', () => {
       state: { version: 2, turn: 50, rngState: 5, islands: [v2Island], playerIslandId: 'player', log: [], nextCommandId: 3 },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.islands).toHaveLength(4);
     expect(state.islands[0]!.controller).toBe('player');
     expect(state.settings).toEqual(DEFAULT_SETTINGS);

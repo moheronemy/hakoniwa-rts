@@ -1,5 +1,6 @@
 import { cellsWithin, hexDistance, inBounds } from './hex';
 import { baseLevel, isSea, islandStats, setTile, terrainName, tileAt } from './island';
+import { isHardened, MONSTER_RULES, monsterOf, monsterTile } from './monsters';
 import { computePower } from './power';
 import type { Rng } from './rng';
 import { RULES } from './rules';
@@ -11,6 +12,8 @@ export interface World {
   islands: Island[];
   turn: number;
   emit: (entry: Omit<LogEntry, 'turn'>) => void;
+  /** 経済的制覇の目標人口（AI が先行する島を止めるのに使う） */
+  economicTarget?: number;
 }
 
 type Effect = 'destroy' | 'land' | 'nuke';
@@ -76,9 +79,12 @@ export function missileProblem(
   const def = MISSILES[kind];
   if (def.tech && !hasTech(island, def.tech)) return `研究「${TECHS[def.tech].name}」が必要です`;
   const target = world.islands.find((i) => i.id === targetIslandId);
-  if (!target || target.id === island.id) return '目標の島がありません';
+  if (!target) return '目標の島がありません';
   if (target.destroyed) return '目標の島はすでに滅亡しています';
-  if (world.turn <= RULES.protectionTurns) return `${RULES.protectionTurns}ターン目までは攻撃できません`;
+  // 自分の島（怪獣退治）へは序盤の保護に関係なく撃てる
+  if (target.id !== island.id && world.turn <= RULES.protectionTurns) {
+    return `${RULES.protectionTurns}ターン目までは攻撃できません`;
+  }
   if (bases(island).length === 0) return 'ミサイル基地がありません';
   return null;
 }
@@ -86,7 +92,7 @@ export function missileProblem(
 /** 壊すと経験値が多く入るマス（住宅地や施設） */
 const VALUABLE: ReadonlySet<TerrainKind> = new Set([
   'town', 'farm', 'factory', 'windPower', 'hydroPower', 'thermalPower', 'nuclearPower', 'lab',
-  'missileBase', 'seaBase', 'interceptor', 'oilField',
+  'missileBase', 'seaBase', 'interceptor', 'oilField', 'wall', 'monsterLab',
 ]);
 
 interface HitResult {
@@ -94,14 +100,45 @@ interface HitResult {
   onLand: boolean;
   /** 壊したもの（住宅地・施設）の名前 */
   destroyed: string[];
+  /** 倒した怪獣の名前 */
+  kills: string[];
+  /** 怪獣にミサイルが効かなかった回数（硬化・迎撃） */
+  resisted: number;
+  /** 倒した怪獣の死骸の値段の合計 */
+  bounty: number;
+  /** 倒した怪獣の経験値の合計 */
+  monsterExp: number;
 }
 
-/** 通常の着弾：施設や住宅地を荒地にする */
-function destroyAt(target: Island, x: number, y: number, result: HitResult): void {
+function newHitResult(): HitResult {
+  return { onLand: false, destroyed: [], kills: [], resisted: 0, bounty: 0, monsterExp: 0 };
+}
+
+/** 怪獣を倒す（死骸の値段と経験値を記録し、マスを荒地にする） */
+function killMonster(target: Island, x: number, y: number, result: HitResult): void {
+  const { def } = monsterOf(tileAt(target, x, y));
+  result.kills.push(def.name);
+  result.bounty += def.value;
+  result.monsterExp += def.exp;
+  setTile(target, x, y, 'waste');
+}
+
+/** 通常の着弾：施設や住宅地を荒地にする。怪獣は体力が1減る */
+function destroyAt(target: Island, x: number, y: number, result: HitResult, turn: number, rng: Rng): void {
   const tile = tileAt(target, x, y);
   const kind = tile.kind;
   if (!isSea(kind)) result.onLand = true;
   switch (kind) {
+    case 'monster': {
+      const { def, hp } = monsterOf(tile);
+      if (isHardened(def, turn) || (def.intercept && rng.next() < MONSTER_RULES.interceptChance)) {
+        result.resisted++;
+        return;
+      }
+      if (hp <= 1) killMonster(target, x, y, result);
+      else target.tiles[y * target.size + x] = monsterTile(def.id, hp - 1);
+      return;
+    }
     case 'deepSea':
     case 'shallow':
     case 'waste':
@@ -117,7 +154,7 @@ function destroyAt(target: Island, x: number, y: number, result: HitResult): voi
       setTile(target, x, y, 'waste');
       // 原子力発電所が壊れると周囲2マスにも被害が広がる
       for (const p of cellsWithin(x, y, 2)) {
-        if ((p.x !== x || p.y !== y) && inBounds(target.size, p.x, p.y)) destroyAt(target, p.x, p.y, result);
+        if ((p.x !== x || p.y !== y) && inBounds(target.size, p.x, p.y)) destroyAt(target, p.x, p.y, result, turn, rng);
       }
       return;
     default:
@@ -126,9 +163,10 @@ function destroyAt(target: Island, x: number, y: number, result: HitResult): voi
   }
 }
 
-/** 陸地破壊弾：陸地を浅瀬に、山を荒地に、浅瀬を深い海にする */
+/** 陸地破壊弾：陸地を浅瀬に、山を荒地に、浅瀬を深い海にする。怪獣は体力に関係なく倒れる */
 function landAt(target: Island, x: number, y: number, result: HitResult): void {
   const tile = tileAt(target, x, y);
+  if (tile.kind === 'monster') killMonster(target, x, y, result);
   if (VALUABLE.has(tile.kind)) result.destroyed.push(terrainName(tile));
   switch (tile.kind) {
     case 'deepSea':
@@ -148,12 +186,16 @@ function landAt(target: Island, x: number, y: number, result: HitResult): void {
   }
 }
 
-/** 核弾頭：周囲1マスの陸地は浅瀬に、周囲2マスは通常の着弾と同じく壊す */
-function nukeAt(target: Island, x: number, y: number, result: HitResult): void {
+/** 核弾頭：周囲1マスの陸地は浅瀬に、周囲2マスは荒地にする。怪獣は体力に関係なく倒れる */
+function nukeAt(target: Island, x: number, y: number, result: HitResult, turn: number, rng: Rng): void {
   for (const p of cellsWithin(x, y, 2)) {
     if (!inBounds(target.size, p.x, p.y)) continue;
-    if (hexDistance(x, y, p.x, p.y) <= 1) landAt(target, p.x, p.y, result);
-    else destroyAt(target, p.x, p.y, result);
+    if (hexDistance(x, y, p.x, p.y) <= 1) {
+      landAt(target, p.x, p.y, result);
+    } else {
+      if (tileAt(target, p.x, p.y).kind === 'monster') killMonster(target, p.x, p.y, result);
+      destroyAt(target, p.x, p.y, result, turn, rng);
+    }
   }
 }
 
@@ -198,6 +240,9 @@ export function fireMissiles(
   let intercepted = 0;
   let missed = 0;
   const destroyedAll: string[] = [];
+  const killsAll: string[] = [];
+  let resisted = 0;
+  let bounty = 0;
   const popBefore = islandStats(target).pop;
 
   for (const base of order) {
@@ -224,22 +269,28 @@ export function fireMissiles(
         continue;
       }
 
-      const result: HitResult = { onLand: false, destroyed: [] };
+      const result = newHitResult();
       if (def.effect === 'land') landAt(target, land.x, land.y, result);
-      else if (def.effect === 'nuke') nukeAt(target, land.x, land.y, result);
-      else destroyAt(target, land.x, land.y, result);
+      else if (def.effect === 'nuke') nukeAt(target, land.x, land.y, result, world.turn, rng);
+      else destroyAt(target, land.x, land.y, result, world.turn, rng);
       destroyedAll.push(...result.destroyed);
+      killsAll.push(...result.kills);
+      resisted += result.resisted;
+      bounty += result.bounty;
+      island.money += result.bounty;
 
       const baseTile = tileAt(island, base.x, base.y);
       if (baseTile.kind === 'missileBase' || baseTile.kind === 'seaBase') {
-        const gain = (result.onLand ? RULES.expLand : 0) + (result.destroyed.length > 0 ? RULES.expDestroy : 0);
+        const gain =
+          (result.onLand ? RULES.expLand : 0) + (result.destroyed.length > 0 ? RULES.expDestroy : 0) + result.monsterExp;
         baseTile.value = Math.min(RULES.expMax, baseTile.value + gain);
       }
     }
     if (fired >= wanted) break;
   }
 
-  target.lastAttackedBy = { islandId: island.id, turn: world.turn };
+  const ownIsland = target.id === island.id;
+  if (!ownIsland) target.lastAttackedBy = { islandId: island.id, turn: world.turn };
   const hits = fired - intercepted - missed;
   const popLost = popBefore - islandStats(target).pop;
   const parts = [`${target.name} (${aimX}, ${aimY}) に${def.name}を${fired}発発射`];
@@ -247,10 +298,13 @@ export function fireMissiles(
   if (intercepted > 0) details.push(`${intercepted}発は迎撃された`);
   if (missed > 0) details.push(`${missed}発は島の外に落ちた`);
   details.push(`${hits}発が着弾`);
+  if (resisted > 0) details.push(`${resisted}発は怪獣に効かなかった`);
+  if (killsAll.length > 0) details.push(`${summarize(killsAll)}を倒した（${bounty}億円）`);
   if (destroyedAll.length > 0) details.push(`${summarize(destroyedAll)}を破壊`);
   if (popLost > 0) details.push(`人口${(popLost * 100).toLocaleString('ja-JP')}人が失われた`);
   const message = `${parts[0]}：${details.join('、')}`;
 
+  if (ownIsland) return { ok: true, message };
   world.emit({
     islandId: target.id,
     text: `${island.name}から${def.name}が${fired}発飛来：${details.join('、')}`,

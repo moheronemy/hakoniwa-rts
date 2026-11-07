@@ -17,7 +17,10 @@ export type TerrainKind =
   | 'lab' // 研究所（value = 段階）
   | 'missileBase' // ミサイル基地（value = 経験値）
   | 'seaBase' // 海底基地（value = 経験値）
-  | 'interceptor'; // 迎撃施設
+  | 'interceptor' // 迎撃施設
+  | 'monster' // 怪獣（value = 種類×16 + 体力）
+  | 'wall' // 防壁
+  | 'monsterLab'; // 怪獣研究所
 
 export interface Tile {
   kind: TerrainKind;
@@ -47,7 +50,24 @@ export type CommandKind =
   | 'missileBase' // ミサイル基地建設
   | 'seaBase' // 海底基地建設
   | 'interceptor' // 迎撃施設建設
+  | 'wall' // 防壁建設
+  | 'monsterLab' // 怪獣研究所建設
+  | 'breed' // 怪獣を育てる
+  | 'sendMonster' // 怪獣派遣
   | MissileKind;
+
+/** 怪獣の種類（仕様書8章・19章） */
+export type MonsterId = 'm1' | 'm2' | 'm3' | 'm4' | 'm5' | 'm6' | 'm7' | 'm8';
+
+/** 怪獣研究所で育てている（育ち上がった）怪獣 */
+export interface Breeding {
+  /** 怪獣研究所のマス */
+  x: number;
+  y: number;
+  monster: MonsterId;
+  /** このターン以降に送れる */
+  readyTurn: number;
+}
 
 /** ミサイルの種類（命令の種類でもある） */
 export type MissileKind =
@@ -76,7 +96,11 @@ export type TechId =
   | 'seaBaseTech' // 海底基地
   | 'landBuster' // 陸地破壊弾
   | 'nukeTech' // 核弾頭
-  | 'baseAuto'; // 基地の自動化
+  | 'baseAuto' // 基地の自動化
+  | 'bio1' // 怪獣研究
+  | 'bio2' // 怪獣強化
+  | 'bio3' // 怪獣改良
+  | 'bio4'; // 究極の怪獣
 
 export interface Research {
   /** まだどの技術にも注いでいない研究ポイント */
@@ -100,10 +124,12 @@ export interface Command {
   targetIslandId?: string;
   /** ミサイルの発数。0 は「撃てるだけ」 */
   count?: number;
+  /** 育てる怪獣の種類 */
+  monster?: MonsterId;
 }
 
 /** 島の持ち主。player 以外は AI の性格 */
-export type Controller = 'player' | 'military' | 'economic' | 'balanced';
+export type Controller = 'player' | 'military' | 'economic' | 'tamer';
 
 export interface Island {
   id: string;
@@ -126,8 +152,10 @@ export interface Island {
   destroyed: boolean;
   /** 人口0が続いているターン数 */
   emptyTurns: number;
-  /** 最後にミサイルを撃ち込んできた島 */
+  /** 最後にミサイルや怪獣を送り込んできた島 */
   lastAttackedBy: { islandId: string; turn: number } | null;
+  /** 怪獣研究所で育てている（育ち上がった）怪獣 */
+  breeding: Breeding[];
 }
 
 export type LogTone = 'info' | 'good' | 'bad';
@@ -149,6 +177,8 @@ export interface GameSettings {
   economicTarget: number;
   /** 期限のターン数 */
   turnLimit: number;
+  /** 災害の強さ（0：なし、0.5：弱い、1：ふつう）。野生の怪獣の出やすさにも効く */
+  disasterLevel: number;
 }
 
 export interface Outcome {
@@ -161,7 +191,7 @@ export interface Outcome {
 
 export interface GameState {
   /** セーブデータの形式のバージョン */
-  version: 3;
+  version: 4;
   /** 処理済みのターン数 */
   turn: number;
   /** 乱数の内部状態 */

@@ -26,12 +26,13 @@ function plainIsland(size = 8): Island {
     destroyed: false,
     emptyTurns: 0,
     lastAttackedBy: null,
+    breeding: [],
   };
 }
 
 function stateWith(island: Island): GameState {
   return {
-    version: 3,
+    version: 4,
     turn: 0,
     rngState: 7,
     islands: [island],
@@ -297,7 +298,7 @@ describe('セーブデータの移行', () => {
       state: { version: 1, turn: 5, rngState: 1, islands: [v1Island], playerIslandId: 'test', log: [], nextCommandId: 1 },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.islands[0]!.oil).toBe(0);
     expect(state.islands[0]!.research).toEqual(newResearch());
   });

@@ -3,8 +3,9 @@ import { neighbors } from './hex';
 import type { Rng } from './rng';
 import { PLANTS, RULES, type PlantKind } from './rules';
 import { fireMissiles, isMissile, MISSILE_LIST, type World } from './military';
-import { hasTech } from './tech';
-import type { CommandKind, Island, TerrainKind } from './types';
+import { BREED_STAGES, MONSTERS, placeMonster } from './monsters';
+import { hasTech, TECHS } from './tech';
+import type { CommandKind, Island, MonsterId, TerrainKind } from './types';
 
 /** 1ターンの中で命令が残す効果（誘致活動など） */
 export interface TurnEffects {
@@ -19,10 +20,11 @@ export interface CommandContext {
   world?: World;
 }
 
-/** ミサイルの命令に付く情報 */
+/** ミサイル・怪獣の命令に付く情報 */
 export interface CommandExtra {
   targetIslandId?: string;
   count?: number;
+  monster?: MonsterId;
 }
 
 export interface CommandDef {
@@ -316,6 +318,33 @@ const DEFS: CommandDef[] = [
     },
   },
   {
+    kind: 'wall',
+    name: '防壁建設',
+    cost: 300,
+    targeted: true,
+    instant: false,
+    description: '怪獣が入れないマス。ミサイルが当たると壊れる',
+    checkTarget: requireKinds(new Set(['plains']), '平地'),
+    apply: (island, x, y) => {
+      setTile(island, x, y, 'wall');
+      return { message: `${at(x, y)} に防壁を建てた` };
+    },
+  },
+  {
+    kind: 'monsterLab',
+    name: '怪獣研究所建設',
+    cost: 2000,
+    targeted: true,
+    instant: false,
+    description: `怪獣を育てる施設（1棟に1匹）。電力${RULES.powerPerMonsterLab}万kW。研究「怪獣研究」が必要`,
+    checkIsland: (island) => (hasTech(island, 'bio1') ? null : '研究「怪獣研究」が必要です'),
+    checkTarget: requireKinds(new Set(['plains']), '平地'),
+    apply: (island, x, y) => {
+      setTile(island, x, y, 'monsterLab');
+      return { message: `${at(x, y)} に怪獣研究所を建てた` };
+    },
+  },
+  {
     kind: 'oilSearch',
     name: '油田探し',
     cost: 300,
@@ -385,6 +414,53 @@ const DEFS: CommandDef[] = [
   },
 ];
 
+// 怪獣を育てる・派遣する命令。実行は executeCommand の中で扱う（種類や目標の島が要るため）
+DEFS.push(
+  {
+    kind: 'breed',
+    name: '怪獣を育てる',
+    cost: 0,
+    targeted: true,
+    instant: false,
+    description: '怪獣研究所で怪獣を育てる。費用と育つまでのターン数は種類で決まる',
+    checkTarget: (island, x, y) => {
+      if (tileAt(island, x, y).kind !== 'monsterLab') return '怪獣研究所にしか使えません';
+      if (island.breeding.some((b) => b.x === x && b.y === y)) return 'この研究所ではすでに怪獣を育てています';
+      return null;
+    },
+    apply: () => {
+      throw new Error('怪獣を育てる命令は executeCommand で実行する');
+    },
+  },
+  {
+    kind: 'sendMonster',
+    name: '怪獣派遣',
+    cost: 0,
+    targeted: false,
+    instant: false,
+    description: '育ち上がった怪獣を1匹、目標の島に送る',
+    apply: () => {
+      throw new Error('怪獣派遣は executeCommand で実行する');
+    },
+  },
+);
+
+/** 育てられない理由。育てられるなら null（資金は見ない） */
+export function breedProblem(island: Island, monster: MonsterId | undefined): string | null {
+  if (!monster) return '怪獣の種類を選んでください';
+  const stage = BREED_STAGES[MONSTERS[monster].stage]!;
+  return hasTech(island, stage.tech) ? null : `研究「${TECHS[stage.tech].name}」が必要です`;
+}
+
+export function breedCost(monster: MonsterId): number {
+  return BREED_STAGES[MONSTERS[monster].stage]!.cost;
+}
+
+/** 送れる（育ち上がった）怪獣 */
+export function readyMonsters(island: Island, turn: number) {
+  return island.breeding.filter((b) => b.readyTurn <= turn);
+}
+
 // ミサイルの命令。実行は executeCommand から fireMissiles に回す
 for (const m of MISSILE_LIST) {
   DEFS.push({
@@ -440,6 +516,8 @@ export function executeCommand(
   extra: CommandExtra = {},
 ): CommandResult {
   const def = COMMANDS[kind];
+  if (kind === 'breed') return breed(island, x, y, extra.monster, ctx);
+  if (kind === 'sendMonster') return sendMonster(island, extra.targetIslandId, ctx);
   if (isMissile(kind)) {
     if (!ctx.world) return { ok: false, message: `${def.name}：目標の島がありません` };
     const result = fireMissiles(ctx.world, island, kind, x, y, extra.targetIslandId, extra.count ?? 0, ctx.rng);
@@ -455,4 +533,42 @@ export function executeCommand(
   island.money -= cost;
   const result = def.apply(island, x, y, ctx);
   return { ok: true, consumedTurn: !def.instant, message: result.message, tone: result.tone ?? 'good' };
+}
+
+function breed(island: Island, x: number, y: number, monster: MonsterId | undefined, ctx: CommandContext): CommandResult {
+  const label = `怪獣を育てる ${at(x, y)}`;
+  const problem = targetProblem(island, 'breed', x, y) ?? breedProblem(island, monster);
+  if (problem || !monster) return { ok: false, message: `${label}：${problem}` };
+  const cost = breedCost(monster);
+  if (island.money < cost) return { ok: false, message: `${label}：資金が足りません（${cost}億円必要）` };
+  island.money -= cost;
+  const def = MONSTERS[monster];
+  const turn = ctx.world?.turn ?? 0;
+  const turns = BREED_STAGES[def.stage]!.turns;
+  island.breeding.push({ x, y, monster, readyTurn: turn + turns });
+  return { ok: true, consumedTurn: true, message: `${at(x, y)} の怪獣研究所で${def.name}を育て始めた（${turns}ターン後に育ち上がる）`, tone: 'good' };
+}
+
+function sendMonster(island: Island, targetIslandId: string | undefined, ctx: CommandContext): CommandResult {
+  const world = ctx.world;
+  const target = world?.islands.find((i) => i.id === targetIslandId);
+  if (!world || !target || target.id === island.id) return { ok: false, message: '怪獣派遣：目標の島がありません' };
+  if (target.destroyed) return { ok: false, message: '怪獣派遣：目標の島はすでに滅亡しています' };
+  if (world.turn <= RULES.protectionTurns) {
+    return { ok: false, message: `怪獣派遣：${RULES.protectionTurns}ターン目までは攻撃できません` };
+  }
+  const ready = readyMonsters(island, world.turn)[0];
+  if (!ready) return { ok: false, message: '怪獣派遣：育ち上がった怪獣がいません' };
+  const def = MONSTERS[ready.monster];
+  const at2 = placeMonster(target, ready.monster, ctx.rng);
+  if (!at2) return { ok: false, message: `怪獣派遣：${target.name}にはこれ以上怪獣を送れません` };
+  island.breeding = island.breeding.filter((b) => b !== ready);
+  target.lastAttackedBy = { islandId: island.id, turn: world.turn };
+  world.emit({
+    islandId: target.id,
+    text: `${island.name}から${def.name}が送り込まれた！ (${at2.x}, ${at2.y}) に現れた`,
+    tone: 'bad',
+    involves: [island.id],
+  });
+  return { ok: true, consumedTurn: true, message: `${target.name}に${def.name}を送り込んだ`, tone: 'good' };
 }

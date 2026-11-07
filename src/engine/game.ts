@@ -1,5 +1,5 @@
 import { COMMANDS } from './commands';
-import type { MissileKind } from './types';
+import type { MissileKind, MonsterId } from './types';
 import { generateIsland } from './generate';
 import { tileAt } from './island';
 import { Rng } from './rng';
@@ -16,19 +16,25 @@ const AI_ISLANDS = [
   { id: 'ai-south', name: '南の島' },
 ] as const;
 
-const AI_CONTROLLERS: readonly Controller[] = ['military', 'economic', 'balanced'];
+const AI_CONTROLLERS: readonly Controller[] = ['military', 'economic', 'tamer'];
 
 export const CONTROLLER_NAMES: Record<Controller, string> = {
   player: 'あなた',
   military: '軍事型',
   economic: '内政型',
-  balanced: 'バランス型',
+  tamer: '怪獣使い型',
 };
 
-export const ECONOMIC_TARGET_OPTIONS = [10000, 15000, 20000] as const; // 100万・150万・200万人
+export const ECONOMIC_TARGET_OPTIONS = [6000, 8000, 12000] as const; // 60万・80万・120万人
 export const TURN_LIMIT_OPTIONS = [1000, 2000, 3000] as const;
 
-export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 15000, turnLimit: 2000 };
+export const DISASTER_LEVEL_OPTIONS = [
+  { value: 0, label: 'なし' },
+  { value: 0.5, label: '弱い' },
+  { value: 1, label: 'ふつう' },
+] as const;
+
+export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 8000, turnLimit: 2000, disasterLevel: 1 };
 
 /** AI の島を3つ作る */
 export function generateAiIslands(rng: Rng): Island[] {
@@ -41,7 +47,7 @@ export function newGame(seed: number, settings: GameSettings = DEFAULT_SETTINGS,
   const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName, 'player');
   const ais = generateAiIslands(rng);
   return {
-    version: 3,
+    version: 4,
     turn: 0,
     rngState: rng.state,
     islands: [island, ...ais],
@@ -105,6 +111,16 @@ export function enqueueCommand(
     count,
     position,
   ).state;
+}
+
+/** 怪獣研究所で怪獣を育てる命令を予約する */
+export function enqueueBreed(state: GameState, x: number, y: number, monster: MonsterId, position?: number): GameState {
+  return insertCommands(state, (id) => ({ id, kind: 'breed', x, y, monster }), 1, position).state;
+}
+
+/** 育ち上がった怪獣を送る命令を予約する */
+export function enqueueSendMonster(state: GameState, targetIslandId: string, position?: number): GameState {
+  return insertCommands(state, (id) => ({ id, kind: 'sendMonster', x: 0, y: 0, targetIslandId }), 1, position).state;
 }
 
 /**

@@ -91,6 +91,9 @@ export const RULES = {
   seaBaseLevels: [0, 50, 100, 200],
   /** 人口0がこのターン数続いたら滅亡 */
   emptyTurnsToDestroy: 10,
+
+  // ---- M4：怪獣・防壁 ----
+  powerPerMonsterLab: 20,
 } as const;
 
 /** 発電所の種類ごとの数値 */

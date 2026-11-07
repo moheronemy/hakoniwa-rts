@@ -1,8 +1,9 @@
-import { commandCost, targetProblem } from './commands';
+import { breedCost, breedProblem, commandCost, readyMonsters, targetProblem } from './commands';
 import { forecast } from './forecast';
 import { hexDistance } from './hex';
 import { islandStats, tileAt, visibleTile } from './island';
 import { MISSILES, missileCapacity, missileProblem, type World } from './military';
+import { isHardened, MONSTER_LIST, monsterOf } from './monsters';
 import { oilProduction } from './power';
 import type { Rng } from './rng';
 import { PLANTS, RULES } from './rules';
@@ -26,6 +27,8 @@ interface Profile {
   labLevels: number;
   /** 何ターンおきに攻撃するか（0 なら攻撃しない） */
   attackEvery: (turn: number, attacked: boolean) => number;
+  /** 欲しい怪獣研究所の数（怪獣使い型だけ） */
+  monsterLabs: number;
   research: TechId[];
 }
 
@@ -35,6 +38,7 @@ const PROFILES: Record<AiController, Profile> = {
     interceptors: (t, _pop, attacked) => 1 + (attacked ? 1 : 0) + Math.floor(t / 400),
     labLevels: 3,
     attackEvery: () => 3,
+    monsterLabs: 0,
     research: ['guidance', 'interceptUp', 'betterWind', 'automation', 'landBuster', 'pinpoint', 'baseAuto', 'reclaim1', 'nukeTech', 'seaBaseTech'],
   },
   economic: {
@@ -42,14 +46,16 @@ const PROFILES: Record<AiController, Profile> = {
     interceptors: (_t, pop, attacked) => 1 + Math.floor(pop / 3000) + (attacked ? 1 : 0),
     labLevels: 9,
     attackEvery: (t, attacked) => (attacked || t > 800 ? 12 : 0),
-    research: ['automation', 'betterWind', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'cityPlan', 'oilProspect'],
+    monsterLabs: 0,
+    research: ['automation', 'betterWind', 'guidance', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'cityPlan'],
   },
-  balanced: {
-    bases: (t) => (t < 120 ? 0 : Math.min(4, 1 + Math.floor(t / 200))),
+  tamer: {
+    bases: (t) => (t < 120 ? 0 : Math.min(3, 1 + Math.floor(t / 250))),
     interceptors: (_t, pop, attacked) => 1 + Math.floor(pop / 5000) + (attacked ? 1 : 0),
     labLevels: 6,
-    attackEvery: (t) => (t > 150 ? 6 : 0),
-    research: ['betterWind', 'automation', 'guidance', 'interceptUp', 'reclaim1', 'turbine', 'bigFarm', 'landBuster', 'grid', 'cityPlan'],
+    attackEvery: (t) => (t > 200 ? 10 : 0),
+    monsterLabs: 1,
+    research: ['bio1', 'betterWind', 'automation', 'bio2', 'interceptUp', 'reclaim1', 'bio3', 'turbine', 'bio4', 'guidance'],
   },
 };
 
@@ -135,59 +141,127 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     if (c) return c;
   }
 
-  // 4. 攻撃
+  // 3.5 工場（働き口が足りない）。収入の元なので、軍備や研究より先に建てる
+  if (stats.pop - stats.farm * 10 > stats.factory * 10 && f.power.supply >= f.power.demand) {
+    const c = findSite(island, 'factory', rng);
+    if (c) return c;
+  }
+
+  // 4. 自分の島に出た怪獣を撃つ。基地がなければ、まず基地を建てる
+  const hunt = huntMonsters(world, island, rng);
+  if (hunt) return hunt;
+  if (island.tiles.some((t) => t.kind === 'monster') && missileCapacity(island) === 0) {
+    const c = findSite(island, 'missileBase', rng);
+    if (c) return c;
+  }
+
+  // 5. 怪獣を育てて送る（怪獣使い型）
+  const tame = planMonsters(world, island, profile, rng, attacked);
+  if (tame) return tame;
+
+  // 6. 攻撃
   const attack = planAttack(world, island, profile, rng, attacked);
   if (attack) return attack;
 
-  // 5. 守り（迎撃施設）
+  // 7. 守り（迎撃施設）
   if (count(island, 'interceptor') < profile.interceptors(turn, stats.pop, attacked) && stats.pop > 200) {
     const c = findSite(island, 'interceptor', rng, (x, y) => townsAround(island, x, y));
     if (c) return c;
   }
 
-  // 6. ミサイル基地
+  // 8. ミサイル基地
   if (count(island, 'missileBase') + count(island, 'seaBase') < profile.bases(turn)) {
     const c = (hasTech(island, 'seaBaseTech') && island.money > 6000 ? findSite(island, 'seaBase', rng) : null) ??
       findSite(island, 'missileBase', rng);
     if (c) return c;
   }
 
-  // 7. 石油（基地があるのに石油が少ない）
+  // 9. 石油（基地があるのに石油が少ない）
   const needsOil = count(island, 'thermalPower') > 0 || count(island, 'missileBase') > 0;
   if (needsOil && island.oil < 40 && oilProduction(island) === 0 && island.money > 800) {
     const c = findSite(island, 'oilSearch', rng);
     if (c) return c;
   }
 
-  // 8. 研究所
+  // 10. 研究所
   const labLevels = island.tiles.reduce((sum, t) => sum + (t.kind === 'lab' ? t.value : 0), 0);
   if (labLevels < profile.labLevels && turn > 20 && island.money > 700) {
     const c = findSite(island, 'lab', rng);
     if (c) return c;
   }
 
-  // 9. 工場（働き口が足りない）
-  if (stats.pop - stats.farm * 10 > stats.factory * 10) {
-    const c = findSite(island, 'factory', rng);
-    if (c) return c;
+  // 11. 荒地を平地に（村が育つ場所になる）。農場を作る資金を残すため、資金が少ないときはしない
+  if (island.money > 60) {
+    const prepare = findSite(island, 'prepare', rng);
+    if (prepare) return prepare;
   }
 
-  // 10. 荒地を平地に
-  const prepare = findSite(island, 'prepare', rng);
-  if (prepare) return prepare;
-
-  // 11. 平地がなくなったら浅瀬を埋め立てる
+  // 12. 平地がなくなったら浅瀬を埋め立てる
   if (count(island, 'plains') < 3) {
     const c = findSite(island, 'reclaim', rng, (x, y) => (tileAt(island, x, y).kind === 'shallow' ? 1 : 0));
     if (c) return c;
   }
 
-  // 12. 余った石油を売る
+  // 13. 余った石油を売る
   if (island.oil > 300) return cmd('sellOil');
 
-  // 13. 余裕があれば誘致活動
+  // 14. 余裕があれば誘致活動
   if (island.money > 5000 && f.power.ratio >= 1 && stats.pop > 3000) return cmd('attract');
 
+  return null;
+}
+
+/** 自分の島に怪獣がいれば、硬くなっていない怪獣をミサイルで撃つ */
+function huntMonsters(world: World, island: Island, rng: Rng): Command | null {
+  if (missileCapacity(island) === 0) return null;
+  const targets: Array<{ x: number; y: number; hp: number }> = [];
+  island.tiles.forEach((t, i) => {
+    if (t.kind !== 'monster') return;
+    const { def, hp } = monsterOf(t);
+    if (!isHardened(def, world.turn)) targets.push({ x: i % island.size, y: Math.floor(i / island.size), hp });
+  });
+  if (targets.length === 0) return null;
+  const target = targets[rng.int(targets.length)]!;
+  // 自分の施設を巻き込まないよう、ばらつきの小さい弾から使う
+  const kinds: MissileKind[] = ['missilePinpoint', 'missilePrecise', 'missileNormal'];
+  for (const kind of kinds) {
+    const def = MISSILES[kind];
+    if (def.tech && !hasTech(island, def.tech)) continue;
+    if (island.money < def.money || island.oil < def.oil) continue;
+    if (missileProblem(world, island, kind, island.id) !== null) continue;
+    return cmd(kind, target.x, target.y, { targetIslandId: island.id, count: target.hp });
+  }
+  return null;
+}
+
+/** 怪獣使い型：怪獣研究所を建て、怪獣を育てて送る */
+function planMonsters(world: World, island: Island, profile: Profile, rng: Rng, attacked: boolean): Command | null {
+  if (profile.monsterLabs === 0 || !hasTech(island, 'bio1')) return null;
+
+  // 育ち上がった怪獣がいれば送る
+  if (readyMonsters(island, world.turn).length > 0 && world.turn > RULES.protectionTurns) {
+    const enemies = world.islands.filter((i) => i.id !== island.id && !i.destroyed);
+    const recent = island.lastAttackedBy;
+    const revenge = attacked && recent ? enemies.find((e) => e.id === recent.islandId) : undefined;
+    const target = leaderToStop(world, enemies) ?? revenge ?? [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0];
+    if (target) return cmd('sendMonster', 0, 0, { targetIslandId: target.id });
+  }
+
+  // 空いている研究所で、育てられる中でいちばん強い段階の怪獣を育てる
+  const freeLab = island.tiles.findIndex(
+    (t, i) => t.kind === 'monsterLab' && !island.breeding.some((b) => b.x === i % island.size && b.y === Math.floor(i / island.size)),
+  );
+  if (freeLab >= 0) {
+    const options = MONSTER_LIST.filter((m) => breedProblem(island, m.id) === null && island.money >= breedCost(m.id) + 1000);
+    const best = options.filter((m) => m.stage === Math.max(...options.map((o) => o.stage)));
+    if (best.length > 0) {
+      const pick = best[rng.int(best.length)]!;
+      return cmd('breed', freeLab % island.size, Math.floor(freeLab / island.size), { monster: pick.id });
+    }
+  }
+
+  // 研究所を建てる
+  if (count(island, 'monsterLab') < profile.monsterLabs) return findSite(island, 'monsterLab', rng);
   return null;
 }
 
@@ -217,7 +291,7 @@ function planAttack(world: World, island: Island, profile: Profile, rng: Rng, at
   const recent = island.lastAttackedBy;
   const revenge = recent && world.turn - recent.turn < 100 ? enemies.find((e) => e.id === recent.islandId) : undefined;
   const strongest = [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0]!;
-  const target = island.controller === 'military' ? strongest : (revenge ?? strongest);
+  const target = leaderToStop(world, enemies) ?? (island.controller === 'military' ? strongest : (revenge ?? strongest));
 
   const kind = chooseMissile(island);
   if (!kind) return null;
@@ -226,6 +300,16 @@ function planAttack(world: World, island: Island, profile: Profile, rng: Rng, at
   const aim = chooseAim(target, rng);
   if (!aim) return null;
   return cmd(kind, aim.x, aim.y, { targetIslandId: target.id, count: 0 });
+}
+
+/**
+ * 経済的制覇に近づいた島（目標人口の60%以上で、いちばん人口の多い島）。いなければ undefined。
+ * どの AI もこの島を優先して攻撃し、先行する島の独走を止める。
+ */
+function leaderToStop(world: World, enemies: Island[]): Island | undefined {
+  if (!world.economicTarget) return undefined;
+  const leader = [...enemies].sort((a, b) => islandStats(b).pop - islandStats(a).pop)[0];
+  return leader && islandStats(leader).pop >= world.economicTarget * 0.6 ? leader : undefined;
 }
 
 function chooseMissile(island: Island): MissileKind | null {

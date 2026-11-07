@@ -29,6 +29,7 @@ export function generateIsland(
     destroyed: false,
     emptyTurns: 0,
     lastAttackedBy: null,
+    breeding: [],
   };
 
   const center = Math.floor(size / 2);

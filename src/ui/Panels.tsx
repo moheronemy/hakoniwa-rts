@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { COMMAND_LIST, COMMANDS, commandCost, targetProblem } from '../engine/commands';
 import { forecast } from '../engine/forecast';
 import { isMissile } from '../engine/military';
+import { MONSTERS } from '../engine/monsters';
 import { autoPrepareTargets } from '../engine/game';
 import { formatPeople, formatThousands, islandStats, terrainName, tileAt, tileDetail } from '../engine/island';
 import { RULES } from '../engine/rules';
@@ -138,7 +139,7 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoP
         </span>
       </div>
       <ul className="commands">
-        {COMMAND_LIST.filter((def) => !isMissile(def.kind)).map((def) => {
+        {COMMAND_LIST.filter((def) => !isMissile(def.kind) && def.kind !== 'breed' && def.kind !== 'sendMonster').map((def) => {
           // マスを対象にしない命令（石油の売却など）は、実行するときに条件を確かめるので予約はできる
           const problem = def.targeted
             ? selected
@@ -241,7 +242,13 @@ export function QueuePanel({ island, islandNames, selectedId, onSelect, onMove, 
                 <button type="button" className="queue-item" onClick={() => onSelect(isSelected ? null : command.id)}>
                   <span className="queue-index">{index + 1}</span>
                   <span>{def.name}</span>
-                  {command.targetIslandId ? (
+                  {command.kind === 'sendMonster' ? (
+                    <span className="muted">{islandNames[command.targetIslandId ?? ''] ?? '?'}へ</span>
+                  ) : command.kind === 'breed' ? (
+                    <span className="muted">
+                      {command.monster ? MONSTERS[command.monster].name : '?'} ({command.x}, {command.y})
+                    </span>
+                  ) : command.targetIslandId ? (
                     <span className="muted">
                       {islandNames[command.targetIslandId] ?? '?'} ({command.x}, {command.y})・
                       {command.count ? `${command.count}発` : '撃てるだけ'}
