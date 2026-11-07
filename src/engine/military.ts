@@ -14,6 +14,8 @@ export interface World {
   emit: (entry: Omit<LogEntry, 'turn'>) => void;
   /** 経済的制覇の目標人口（AI が先行する島を止めるのに使う） */
   economicTarget?: number;
+  /** 平和モード：他の島を攻撃できない */
+  peaceful?: boolean;
 }
 
 type Effect = 'destroy' | 'land' | 'nuke';
@@ -70,8 +72,10 @@ export function missileCapacity(island: Island): number {
 }
 
 /** 撃てない理由（資金・石油は見ない）。撃てるなら null */
+export const PEACEFUL_MESSAGE = '平和モードでは他の島を攻撃できません';
+
 export function missileProblem(
-  world: Pick<World, 'islands' | 'turn'>,
+  world: Pick<World, 'islands' | 'turn' | 'peaceful'>,
   island: Island,
   kind: MissileKind,
   targetIslandId: string | undefined,
@@ -81,6 +85,7 @@ export function missileProblem(
   const target = world.islands.find((i) => i.id === targetIslandId);
   if (!target) return '目標の島がありません';
   if (target.destroyed) return '目標の島はすでに滅亡しています';
+  if (world.peaceful && target.id !== island.id) return PEACEFUL_MESSAGE;
   // 自分の島（怪獣退治）へは序盤の保護に関係なく撃てる
   if (target.id !== island.id && world.turn <= RULES.protectionTurns) {
     return `${RULES.protectionTurns}ターン目までは攻撃できません`;

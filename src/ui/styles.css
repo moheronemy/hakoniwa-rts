@@ -580,3 +580,11 @@ button.primary {
   color: #ffffff;
   vertical-align: middle;
 }
+
+.peaceful-badge {
+  background: var(--good);
+}
+
+.dialog label.checkbox {
+  justify-content: flex-start;
+}

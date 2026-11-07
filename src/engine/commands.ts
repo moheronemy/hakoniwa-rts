@@ -2,7 +2,7 @@ import { hasAdjacent, isSea, setTile, terrainName, tileAt } from './island';
 import { neighbors } from './hex';
 import type { Rng } from './rng';
 import { PLANTS, RULES, type PlantKind } from './rules';
-import { fireMissiles, isMissile, MISSILE_LIST, type World } from './military';
+import { fireMissiles, isMissile, MISSILE_LIST, PEACEFUL_MESSAGE, type World } from './military';
 import { BREED_STAGES, MONSTERS, placeMonster } from './monsters';
 import { hasTech, TECHS } from './tech';
 import type { CommandKind, Island, MonsterId, TerrainKind } from './types';
@@ -554,6 +554,7 @@ function sendMonster(island: Island, targetIslandId: string | undefined, ctx: Co
   const target = world?.islands.find((i) => i.id === targetIslandId);
   if (!world || !target || target.id === island.id) return { ok: false, message: '怪獣派遣：目標の島がありません' };
   if (target.destroyed) return { ok: false, message: '怪獣派遣：目標の島はすでに滅亡しています' };
+  if (world.peaceful) return { ok: false, message: `怪獣派遣：${PEACEFUL_MESSAGE}` };
   if (world.turn <= RULES.protectionTurns) {
     return { ok: false, message: `怪獣派遣：${RULES.protectionTurns}ターン目までは攻撃できません` };
   }

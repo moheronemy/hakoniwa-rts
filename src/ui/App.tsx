@@ -37,6 +37,7 @@ import {
   MissileMenu,
   NewGameDialog,
   OutcomeDialog,
+  PeacefulPanel,
   RankingPanel,
   SendMonsterPanel,
   SpectatorOutcomeDialog,
@@ -124,6 +125,16 @@ export function App() {
     () => setGame((g) => (g ? advanceTurn(g) : g)),
     running,
   );
+
+  // 平和モードで勝利条件を満たしたら、通知で知らせる（ゲームは続く）
+  const milestoneCount = game?.milestones?.length ?? 0;
+  const lastMilestone = useRef(milestoneCount);
+  useEffect(() => {
+    const latest = game?.milestones?.[milestoneCount - 1];
+    // 読み込んだセーブデータの古い記録では知らせない（達成したそのターンだけ）
+    if (milestoneCount > lastMilestone.current && latest && latest.turn === game?.turn) setNotice(latest.text);
+    lastMilestone.current = milestoneCount;
+  }, [milestoneCount, game?.milestones, game?.turn]);
 
   // 予約から命令が実行されて消えたら、その選択を外す
   useEffect(() => {
@@ -290,7 +301,10 @@ export function App() {
 
   const header = (
     <header className="app-header">
-      <h1>箱庭RTS（仮）{spectating && <small className="spectator-badge">観戦中</small>}</h1>
+      <h1>
+        箱庭RTS（仮）{spectating && <small className="spectator-badge">観戦中</small>}
+        {game.settings.peaceful && <small className="spectator-badge peaceful-badge">平和モード</small>}
+      </h1>
       <div className="header-actions">
         {spectating ? (
           <button type="button" onClick={() => void exitSpectator()}>
@@ -352,6 +366,8 @@ export function App() {
           onEnqueue={handleEnqueue}
           onAutoPrepare={handleAutoPrepare}
         />
+      ) : game.settings.peaceful ? (
+        <PeacefulPanel island={viewed} selected={selected} />
       ) : (
         <>
           <MissileMenu

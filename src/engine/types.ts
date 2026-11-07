@@ -181,6 +181,15 @@ export interface GameSettings {
   turnLimit: number;
   /** 災害の強さ（0：なし、0.5：弱い、1：ふつう）。野生の怪獣の出やすさにも効く */
   disasterLevel: number;
+  /** 平和モード：他の島を攻撃できず、勝利条件を満たしてもゲームは終わらない */
+  peaceful?: boolean;
+}
+
+/** 平和モードで、勝利条件を満たしたことの記録（1回だけ知らせる） */
+export interface Milestone {
+  key: string;
+  text: string;
+  turn: number;
 }
 
 export interface Outcome {
@@ -207,4 +216,6 @@ export interface GameState {
   outcome: Outcome | null;
   /** 観戦モード（すべての島が AI。プレイヤーの勝敗はない） */
   spectator?: boolean;
+  /** 平和モードで達成した勝利条件の記録 */
+  milestones?: Milestone[];
 }
