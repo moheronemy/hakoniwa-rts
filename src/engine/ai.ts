@@ -9,7 +9,16 @@ import type { Rng } from './rng';
 import { PLANTS, RULES } from './rules';
 import { islandScore } from './score';
 import { canResearch, hasTech, TECH_LIST } from './tech';
-import type { Command, CommandKind, Controller, Island, MissileKind, TechId, TerrainKind } from './types';
+import {
+  canSeeHiddenBases,
+  hasSatellite,
+  laserProblem,
+  launchProblem,
+  repairCost,
+  SATELLITE_RULES,
+  SATELLITES,
+} from './satellites';
+import type { Command, CommandKind, Controller, Island, MissileKind, SatelliteKind, TechId, TerrainKind, Tile } from './types';
 
 /**
  * AI の島の判断（仕様書18章）。プレイヤーと同じルールで、1ターンに1命令を予約する。
@@ -30,6 +39,8 @@ interface Profile {
   /** 欲しい怪獣研究所の数（怪獣使い型だけ） */
   monsterLabs: number;
   research: TechId[];
+  /** 打ち上げたい人工衛星（先頭ほど優先） */
+  satellites: SatelliteKind[];
 }
 
 const PROFILES: Record<AiController, Profile> = {
@@ -39,7 +50,8 @@ const PROFILES: Record<AiController, Profile> = {
     labLevels: 3,
     attackEvery: () => 3,
     monsterLabs: 0,
-    research: ['guidance', 'interceptUp', 'betterWind', 'automation', 'landBuster', 'pinpoint', 'baseAuto', 'reclaim1', 'nukeTech', 'seaBaseTech'],
+    research: ['guidance', 'interceptUp', 'betterWind', 'automation', 'landBuster', 'pinpoint', 'baseAuto', 'reclaim1', 'nukeTech', 'rocket', 'observeSat', 'interceptSat', 'militarySat', 'seaBaseTech'],
+    satellites: ['observation', 'military', 'intercept'],
   },
   economic: {
     bases: (t) => (t < 500 ? 0 : Math.min(3, 1 + Math.floor((t - 500) / 300))),
@@ -47,7 +59,8 @@ const PROFILES: Record<AiController, Profile> = {
     labLevels: 9,
     attackEvery: (t, attacked) => (attacked || t > 800 ? 12 : 0),
     monsterLabs: 0,
-    research: ['automation', 'betterWind', 'guidance', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'cityPlan'],
+    research: ['automation', 'betterWind', 'guidance', 'reclaim1', 'bigFarm', 'turbine', 'interceptUp', 'reclaim2', 'grid', 'rocket', 'cityPlan', 'observeSat', 'launchUp', 'interceptSat'],
+    satellites: ['weather', 'observation', 'intercept'],
   },
   tamer: {
     bases: (t) => (t < 120 ? 0 : Math.min(3, 1 + Math.floor(t / 250))),
@@ -55,7 +68,8 @@ const PROFILES: Record<AiController, Profile> = {
     labLevels: 6,
     attackEvery: (t) => (t > 200 ? 10 : 0),
     monsterLabs: 1,
-    research: ['bio1', 'betterWind', 'automation', 'bio2', 'interceptUp', 'reclaim1', 'bio3', 'turbine', 'bio4', 'guidance'],
+    research: ['bio1', 'betterWind', 'automation', 'bio2', 'interceptUp', 'reclaim1', 'bio3', 'turbine', 'bio4', 'rocket', 'observeSat', 'guidance'],
+    satellites: ['weather'],
   },
 };
 
@@ -88,6 +102,23 @@ function count(island: Island, kind: TerrainKind): number {
  * 住宅地には建てない（人口を減らさないため）。
  */
 function findSite(island: Island, kind: CommandKind, rng: Rng, prefer?: (x: number, y: number) => number): Command | null {
+  return findSiteIn(island, kind, rng, prefer, false);
+}
+
+/**
+ * 平地などが見つからなければ、人口のいちばん少ない住宅地に建てる（狭い島で農場や工場を作るため）。
+ */
+function findSiteOrTown(island: Island, kind: 'farm' | 'factory' | 'lab', rng: Rng): Command | null {
+  return findSiteIn(island, kind, rng, undefined, false) ?? findSiteIn(island, kind, rng, (x, y) => -tileAt(island, x, y).value, true);
+}
+
+function findSiteIn(
+  island: Island,
+  kind: CommandKind,
+  rng: Rng,
+  prefer: ((x: number, y: number) => number) | undefined,
+  townsOnly: boolean,
+): Command | null {
   if (island.money < commandCost(island, kind)) return null;
   const order = rng.permutation(island.tiles.length);
   let best: { x: number; y: number; score: number } | null = null;
@@ -95,7 +126,7 @@ function findSite(island: Island, kind: CommandKind, rng: Rng, prefer?: (x: numb
     const x = index % island.size;
     const y = Math.floor(index / island.size);
     const tile = tileAt(island, x, y);
-    if (tile.kind === 'town') continue;
+    if ((tile.kind === 'town') !== townsOnly) continue;
     if (targetProblem(island, kind, x, y) !== null) continue;
     // 重ねて建てられるならそれを優先する
     const upgrade = tile.kind === kind || (kind === 'farm' && tile.kind === 'farm') || (kind === 'factory' && tile.kind === 'factory');
@@ -123,9 +154,15 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
   const stats = islandStats(island);
   const attacked = island.lastAttackedBy !== null && turn - island.lastAttackedBy.turn < 100;
 
-  // 1. 食料
+  // 1. 食料（平地がなければ、人口の少ない村を農場にする）
   if (f.food < Math.max(3, stats.pop * 0.02)) {
-    const c = findSite(island, 'farm', rng);
+    const c = findSiteOrTown(island, 'farm', rng);
+    if (c) return c;
+  }
+
+  // 1.5 島が狭いので、平地や荒地が少なくなったら埋め立てで広げる
+  if (count(island, 'plains') + count(island, 'waste') < 4 && island.money > 300) {
+    const c = findSite(island, 'reclaim', rng, (x, y) => (tileAt(island, x, y).kind === 'shallow' ? 1 : 0));
     if (c) return c;
   }
 
@@ -143,7 +180,13 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
 
   // 3.5 工場（働き口が足りない）。収入の元なので、軍備や研究より先に建てる
   if (stats.pop - stats.farm * 10 > stats.factory * 10 && f.power.supply >= f.power.demand) {
-    const c = findSite(island, 'factory', rng);
+    const c = findSiteOrTown(island, 'factory', rng);
+    if (c) return c;
+  }
+
+  // 3.6 研究所が1つもなければ建てる（狭い島では後回しにすると、いつまでも建たない）
+  if (count(island, 'lab') === 0 && turn > 30 && island.money > 600) {
+    const c = findSiteOrTown(island, 'lab', rng);
     if (c) return c;
   }
 
@@ -168,6 +211,10 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     const c = findSite(island, 'interceptor', rng, (x, y) => townsAround(island, x, y));
     if (c) return c;
   }
+
+  // 7.5 人工衛星（修復と打ち上げ）
+  const sat = planSatellites(island, profile);
+  if (sat) return sat;
 
   // 8. ミサイル基地
   if (count(island, 'missileBase') + count(island, 'seaBase') < profile.bases(turn)) {
@@ -196,8 +243,8 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     if (prepare) return prepare;
   }
 
-  // 12. 平地がなくなったら浅瀬を埋め立てる
-  if (count(island, 'plains') < 3) {
+  // 12. 資金に余裕があれば、埋め立てで島を広げる
+  if (island.money > 1500) {
     const c = findSite(island, 'reclaim', rng, (x, y) => (tileAt(island, x, y).kind === 'shallow' ? 1 : 0));
     if (c) return c;
   }
@@ -279,12 +326,27 @@ function buildPower(island: Island, rng: Rng): Command | null {
   return findSite(island, 'hydroPower', rng) ?? findSite(island, 'windPower', rng);
 }
 
+/** 耐久が減った衛星を修復し、余裕があれば欲しい衛星を打ち上げる */
+function planSatellites(island: Island, profile: Profile): Command | null {
+  for (const kind of profile.satellites) {
+    const left = island.satellites[kind] ?? 0;
+    if (left > 0 && left < 25 && island.money >= repairCost(kind) + 500) return cmd('repairSatellite', 0, 0, { satellite: kind });
+  }
+  for (const kind of profile.satellites) {
+    if (launchProblem(island, kind) === null && island.money >= SATELLITES[kind].cost + 5000) {
+      return cmd('launchSatellite', 0, 0, { satellite: kind });
+    }
+  }
+  return null;
+}
+
 /** 攻撃の相手と弾と狙うマスを決める */
 function planAttack(world: World, island: Island, profile: Profile, rng: Rng, attacked: boolean): Command | null {
   const every = profile.attackEvery(world.turn, attacked);
   if (every <= 0) return null;
   if ((world.turn + idOffset(island.id)) % every !== 0) return null;
-  if (missileCapacity(island) === 0) return null;
+  const laser = hasSatellite(island, 'military') && island.money >= SATELLITE_RULES.laserCost + 1000;
+  if (missileCapacity(island) === 0 && !laser) return null;
 
   const enemies = world.islands.filter((i) => i.id !== island.id && !i.destroyed);
   if (enemies.length === 0) return null;
@@ -293,11 +355,16 @@ function planAttack(world: World, island: Island, profile: Profile, rng: Rng, at
   const strongest = [...enemies].sort((a, b) => islandScore(b) - islandScore(a))[0]!;
   const target = leaderToStop(world, enemies) ?? (island.controller === 'military' ? strongest : (revenge ?? strongest));
 
+  // 軍事衛星があれば、半分は衛星レーザーで確実に壊す（迎撃施設を先に狙う）
+  if (laser && laserProblem(world, island, target.id) === null && (missileCapacity(island) === 0 || rng.next() < 0.5)) {
+    const p = laserAim(island, target) ?? chooseAim(island, target, rng);
+    if (p) return cmd('satelliteLaser', p.x, p.y, { targetIslandId: target.id });
+  }
+
   const kind = chooseMissile(island);
   if (!kind) return null;
   if (missileProblem(world, island, kind, target.id) !== null) return null;
-
-  const aim = chooseAim(target, rng);
+  const aim = chooseAim(island, target, rng);
   if (!aim) return null;
   return cmd(kind, aim.x, aim.y, { targetIslandId: target.id, count: 0 });
 }
@@ -331,15 +398,40 @@ function chooseMissile(island: Island): MissileKind | null {
   return null;
 }
 
-/** 見えている範囲で、人口の多い住宅地を狙う（迎撃施設に守られているマスは避ける） */
-function chooseAim(target: Island, rng: Rng): { x: number; y: number } | null {
+/** 他の島のマスの見え方（観測衛星があれば基地も見える） */
+function seenBy(island: Island) {
+  return canSeeHiddenBases(island) ? (t: Tile) => t : visibleTile;
+}
+
+/** 衛星レーザーの狙い：迎撃施設、見えていればミサイル基地 */
+function laserAim(island: Island, target: Island): { x: number; y: number } | null {
+  const see = seenBy(island);
+  const index = target.tiles.findIndex((t) => see(t).kind === 'interceptor');
+  const base = index >= 0 ? index : target.tiles.findIndex((t) => see(t).kind === 'missileBase' || see(t).kind === 'seaBase');
+  return base >= 0 ? { x: base % target.size, y: Math.floor(base / target.size) } : null;
+}
+
+/**
+ * 見えている範囲で、人口の多い住宅地を狙う（迎撃施設に守られているマスは避ける）。
+ * 観測衛星があれば、ミサイル基地も狙う。
+ */
+function chooseAim(island: Island, target: Island, rng: Rng): { x: number; y: number } | null {
+  const see = seenBy(island);
   const interceptors: Array<{ x: number; y: number }> = [];
   target.tiles.forEach((t, i) => {
-    if (visibleTile(t).kind === 'interceptor') interceptors.push({ x: i % target.size, y: Math.floor(i / target.size) });
+    if (see(t).kind === 'interceptor') interceptors.push({ x: i % target.size, y: Math.floor(i / target.size) });
   });
   let best: { x: number; y: number; score: number } | null = null;
   for (const index of rng.permutation(target.tiles.length)) {
-    const tile = visibleTile(target.tiles[index]!);
+    const tile = see(target.tiles[index]!);
+    if (tile.kind === 'missileBase' || tile.kind === 'seaBase') {
+      const x = index % target.size;
+      const y = Math.floor(index / target.size);
+      const covered = interceptors.some((p) => hexDistance(p.x, p.y, x, y) <= RULES.interceptRange);
+      const score = 60 - (covered ? 150 : 0);
+      if (!best || score > best.score) best = { x, y, score };
+      continue;
+    }
     if (tile.kind !== 'town' && tile.kind !== 'factory' && tile.kind !== 'farm') continue;
     const x = index % target.size;
     const y = Math.floor(index / target.size);

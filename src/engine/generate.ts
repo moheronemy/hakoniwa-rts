@@ -2,11 +2,15 @@ import { hasAdjacent, isSea, setTile, tileAt } from './island';
 import type { Rng } from './rng';
 import { RULES } from './rules';
 import { newResearch } from './tech';
-import type { Controller, Island } from './types';
+import type { Controller, Island, TerrainKind } from './types';
 
 /**
- * 初期の島を作る（仕様書16章）。
- * 中央の6×6マスを荒地にし、周りに陸地をランダムに広げてから、森・村・山・農場を置く。
+ * 初期の島を作る（仕様書16章・23章）。原作の作り方に合わせる。
+ * 1. 中央の4×4マスを荒地にする。
+ * 2. 中央の8×8マスの範囲から120回マスを選び、そのマスか隣に陸地があれば
+ *    「深い海→浅瀬→荒地→平地」と1段階ずつ陸地にする。
+ * 3. 中央の4×4マスに森4・村2・山1を置き、何もしなくても飢えないよう農場1を加える。
+ * 陸地はおよそ25〜40マスになる（20×20マスのうち中央だけを使う）。
  */
 export function generateIsland(
   rng: Rng,
@@ -30,60 +34,52 @@ export function generateIsland(
     emptyTurns: 0,
     lastAttackedBy: null,
     breeding: [],
+    satellites: {},
   };
 
-  const center = Math.floor(size / 2);
-  const coreStart = center - 3;
-  for (let y = coreStart; y < coreStart + 6; y++) {
-    for (let x = coreStart; x < coreStart + 6; x++) {
-      setTile(island, x, y, 'waste');
-    }
+  const center = Math.floor(size / 2) - 1;
+  for (let y = center - 1; y < center + 3; y++) {
+    for (let x = center - 1; x < center + 3; x++) setTile(island, x, y, 'waste');
   }
 
-  // 中央付近のマスを選び、隣が陸なら「深い海→浅瀬→荒地」と陸地を広げる
-  const spread = 8;
-  const iterations = size * size * 3;
-  for (let i = 0; i < iterations; i++) {
-    const x = center - spread + rng.int(spread * 2);
-    const y = center - spread + rng.int(spread * 2);
+  for (let i = 0; i < GROW_STEPS; i++) {
+    const x = rng.int(8) + center - 3;
+    const y = rng.int(8) + center - 3;
     const tile = tileAt(island, x, y);
-    if (!isSea(tile.kind)) continue;
-    if (!hasAdjacent(island, x, y, (t) => !isSea(t.kind))) continue;
-    setTile(island, x, y, tile.kind === 'deepSea' ? 'shallow' : 'waste');
+    const nearLand = !isSea(tile.kind) || hasAdjacent(island, x, y, (t) => !isSea(t.kind));
+    if (!nearLand) continue;
+    if (tile.kind === 'waste') setTile(island, x, y, 'plains');
+    else if (tile.kind === 'shallow') setTile(island, x, y, 'waste');
+    else if (tile.kind === 'deepSea') setTile(island, x, y, 'shallow');
   }
 
-  // 陸地の外側1マスは浅瀬にして、海岸線を自然にする
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      if (tileAt(island, x, y).kind !== 'deepSea') continue;
-      if (hasAdjacent(island, x, y, (t) => !isSea(t.kind))) setTile(island, x, y, 'shallow');
-    }
-  }
-
-  placeFeatures(island, rng, 'forest', 6, 5);
-  placeFeatures(island, rng, 'town', 2, 5);
-  placeFeatures(island, rng, 'mountain', 2, 0);
-  // 何もしなくても序盤に飢えて滅亡しないよう、農場を1つ置く（仕様書18章）
-  placeFeatures(island, rng, 'farm', 1, RULES.farmInitial);
+  const core = (t: TerrainKind) => t !== 'forest' && t !== 'town' && t !== 'mountain' && t !== 'farm';
+  placeInCore(island, rng, center, 'forest', 4, 5, (t) => t !== 'forest');
+  placeInCore(island, rng, center, 'town', 2, 5, core);
+  placeInCore(island, rng, center, 'mountain', 1, 0, core);
+  placeInCore(island, rng, center, 'farm', 1, RULES.farmInitial, core);
 
   return island;
 }
 
-function placeFeatures(
+/** 原作で陸地を広げる回数 */
+const GROW_STEPS = 120;
+
+/** 中央の4×4マスのうち、条件に合うマスにランダムに置く */
+function placeInCore(
   island: Island,
   rng: Rng,
-  kind: 'forest' | 'town' | 'mountain' | 'farm',
+  center: number,
+  kind: TerrainKind,
   count: number,
   value: number,
+  allowed: (current: TerrainKind) => boolean,
 ): void {
-  const candidates: Array<{ x: number; y: number }> = [];
-  for (let y = 0; y < island.size; y++) {
-    for (let x = 0; x < island.size; x++) {
-      if (tileAt(island, x, y).kind === 'waste') candidates.push({ x, y });
-    }
-  }
-  for (let i = 0; i < count && candidates.length > 0; i++) {
-    const [pick] = candidates.splice(rng.int(candidates.length), 1);
-    if (pick) setTile(island, pick.x, pick.y, kind, value);
+  for (let placed = 0, tries = 0; placed < count && tries < 200; tries++) {
+    const x = rng.int(4) + center - 1;
+    const y = rng.int(4) + center - 1;
+    if (!allowed(tileAt(island, x, y).kind)) continue;
+    setTile(island, x, y, kind, value);
+    placed++;
   }
 }

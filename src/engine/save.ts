@@ -3,7 +3,7 @@ import { Rng } from './rng';
 import { newResearch } from './tech';
 import type { GameState } from './types';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface SaveFile {
   format: 'hakoniwa-rts-save';
@@ -30,6 +30,7 @@ const MIGRATIONS: Record<number, (state: Raw) => Raw> = {
   1: migrateV1,
   2: migrateV2,
   3: migrateV3,
+  4: migrateV4,
 };
 
 /** セーブデータを読み込む。古い版は順に移行する。形式が違えば例外を投げる */
@@ -105,6 +106,12 @@ function migrateV3(state: Raw): Raw {
   }));
   const settings = { ...(state.settings as Raw), disasterLevel: DEFAULT_SETTINGS.disasterLevel };
   return { ...state, version: 4, islands, settings };
+}
+
+/** 版4 → 版5：島に人工衛星の状態を足す */
+function migrateV4(state: Raw): Raw {
+  const islands = islandsOf(state).map((island) => ({ ...island, satellites: island.satellites ?? {} }));
+  return { ...state, version: 5, islands };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

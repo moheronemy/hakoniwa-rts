@@ -1,5 +1,5 @@
 import { COMMANDS } from './commands';
-import type { MissileKind, MonsterId } from './types';
+import type { MissileKind, MonsterId, SatelliteKind } from './types';
 import { generateIsland } from './generate';
 import { tileAt } from './island';
 import { Rng } from './rng';
@@ -25,7 +25,7 @@ export const CONTROLLER_NAMES: Record<Controller, string> = {
   tamer: '怪獣使い型',
 };
 
-export const ECONOMIC_TARGET_OPTIONS = [6000, 8000, 12000] as const; // 60万・80万・120万人
+export const ECONOMIC_TARGET_OPTIONS = [3000, 4500, 6000] as const; // 30万・45万・60万人
 export const TURN_LIMIT_OPTIONS = [1000, 2000, 3000] as const;
 
 export const DISASTER_LEVEL_OPTIONS = [
@@ -34,7 +34,7 @@ export const DISASTER_LEVEL_OPTIONS = [
   { value: 1, label: 'ふつう' },
 ] as const;
 
-export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 8000, turnLimit: 2000, disasterLevel: 1 };
+export const DEFAULT_SETTINGS: GameSettings = { economicTarget: 4500, turnLimit: 2000, disasterLevel: 1 };
 
 /** AI の島を3つ作る */
 export function generateAiIslands(rng: Rng): Island[] {
@@ -52,7 +52,7 @@ export function newSpectatorGame(seed: number, settings: GameSettings = DEFAULT_
   const west = generateIsland(rng, PLAYER_ISLAND_ID, '西の島', controller);
   const ais = generateAiIslands(rng);
   return {
-    version: 4,
+    version: 5,
     turn: 0,
     rngState: rng.state,
     islands: [west, ...ais],
@@ -70,7 +70,7 @@ export function newGame(seed: number, settings: GameSettings = DEFAULT_SETTINGS,
   const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName, 'player');
   const ais = generateAiIslands(rng);
   return {
-    version: 4,
+    version: 5,
     turn: 0,
     rngState: rng.state,
     islands: [island, ...ais],
@@ -139,6 +139,21 @@ export function enqueueCommand(
 /** 怪獣研究所で怪獣を育てる命令を予約する */
 export function enqueueBreed(state: GameState, x: number, y: number, monster: MonsterId, position?: number): GameState {
   return insertCommands(state, (id) => ({ id, kind: 'breed', x, y, monster }), 1, position).state;
+}
+
+/** 人工衛星の打ち上げか修復の命令を予約する */
+export function enqueueSatellite(
+  state: GameState,
+  kind: 'launchSatellite' | 'repairSatellite',
+  satellite: SatelliteKind,
+  position?: number,
+): GameState {
+  return insertCommands(state, (id) => ({ id, kind, x: 0, y: 0, satellite }), 1, position).state;
+}
+
+/** 衛星レーザーの命令を予約する */
+export function enqueueLaser(state: GameState, targetIslandId: string, x: number, y: number, position?: number): GameState {
+  return insertCommands(state, (id) => ({ id, kind: 'satelliteLaser', x, y, targetIslandId }), 1, position).state;
 }
 
 /** 育ち上がった怪獣を送る命令を予約する */

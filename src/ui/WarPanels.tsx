@@ -12,6 +12,7 @@ import { MISSILE_LIST, missileCapacity, missileProblem } from '../engine/militar
 import { abilityNames, BREED_STAGES, MONSTER_LIST, MONSTERS } from '../engine/monsters';
 import { RULES } from '../engine/rules';
 import { islandScore, ranking } from '../engine/score';
+import { satelliteSummary } from './SatellitePanels';
 import type { GameSettings, GameState, Island, MissileKind, MonsterId, Outcome } from '../engine/types';
 
 interface TabsProps {
@@ -281,6 +282,7 @@ export function SpectatorPanel({
         {island.name}：人口{formatPeople(s.pop)}・面積{s.area}マス・研究{island.research.done.length}個
         {island.destroyed ? '（滅亡）' : ''}
       </p>
+      {satelliteSummary(island) && <p className="tile-info muted">人工衛星：{satelliteSummary(island)}</p>}
       {selected && tile ? (
         <p className="tile-info">
           ({selected.x}, {selected.y}) <strong>{terrainName(tile)}</strong> {tileDetail(tile)}

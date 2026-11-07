@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, enqueueMissile, newGame, playerIsland } from './game';
+import { DEFAULT_SETTINGS, enqueueMissile, newGame, newSpectatorGame, playerIsland } from './game';
 import { generateIsland } from './generate';
 import { cellsWithin, hexDistance, neighbors } from './hex';
 import { baseLevel, setTile, tileAt, visibleTile } from './island';
@@ -28,6 +28,7 @@ function island(id: string, size = 8): Island {
     emptyTurns: 0,
     lastAttackedBy: null,
     breeding: [],
+    satellites: {},
   };
 }
 
@@ -224,7 +225,7 @@ describe('弾の効果', () => {
 
 function gameWith(islands: Island[], turn = 0): GameState {
   return {
-    version: 4,
+    version: 5,
     turn,
     rngState: 9,
     islands,
@@ -324,14 +325,15 @@ describe('AI', () => {
   });
 
   it('AI は300ターンで島を発展させ、研究を進める。同じ入力なら同じ結果になる', () => {
-    let a = newGame(7);
+    // 何もしないプレイヤーの島が先に滅亡して止まらないよう、4島すべてが AI の観戦モードで確かめる
+    let a = newSpectatorGame(7);
     for (let i = 0; i < 300; i++) a = advanceTurn(a);
-    for (const ai of a.islands.filter((i) => i.controller !== 'player')) {
+    for (const ai of a.islands) {
       expect(ai.destroyed).toBe(false);
       expect(ai.research.done.length).toBeGreaterThan(0);
       expect(ai.tiles.some((t) => t.kind === 'windPower' || t.kind === 'hydroPower' || t.kind === 'thermalPower')).toBe(true);
     }
-    let b = newGame(7);
+    let b = newSpectatorGame(7);
     for (let i = 0; i < 300; i++) b = advanceTurn(b);
     expect(b).toEqual(a);
   });
@@ -348,7 +350,7 @@ describe('セーブデータの移行', () => {
       state: { version: 2, turn: 50, rngState: 5, islands: [v2Island], playerIslandId: 'player', log: [], nextCommandId: 3 },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.islands).toHaveLength(4);
     expect(state.islands[0]!.controller).toBe('player');
     expect(state.settings).toEqual(DEFAULT_SETTINGS);

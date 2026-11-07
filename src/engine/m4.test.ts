@@ -37,6 +37,7 @@ function island(id: string, fill: 'plains' | 'wall' = 'plains', size = 8): Islan
     emptyTurns: 0,
     lastAttackedBy: null,
     breeding: [],
+    satellites: {},
   };
 }
 
@@ -261,7 +262,7 @@ describe('怪獣の育成と派遣', () => {
     setTile(a, 0, 0, 'town', 50);
     setTile(a, 1, 0, 'farm', 50);
     const state: GameState = {
-      version: 4,
+      version: 5,
       turn: 1,
       rngState: 3,
       islands: [a, b],
@@ -356,7 +357,7 @@ describe('セーブデータの移行（版3 → 版4）', () => {
       },
     });
     const state = deserialize(text);
-    expect(state.version).toBe(4);
+    expect(state.version).toBe(5);
     expect(state.islands[1]!.controller).toBe('tamer');
     expect(state.islands.every((i) => Array.isArray(i.breeding))).toBe(true);
     expect(state.settings.disasterLevel).toBe(1);
