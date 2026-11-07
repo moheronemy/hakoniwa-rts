@@ -15,6 +15,13 @@
 
 AI の島・電力・石油・技術・災害・怪獣は、まだ入っていない（M2 以降）。
 
+## 遊ぶ
+
+GitHub Pages で公開している：https://moheronemy.github.io/hakoniwa-rts/
+
+デフォルトブランチにプッシュすると、GitHub Actions（`.github/workflows/deploy-pages.yml`）がテストとビルドを行い、自動で公開する。
+初回だけ、リポジトリの Settings → Pages で「Source」を「GitHub Actions」にしておく必要がある。
+
 ## 動かし方
 
 ```sh
