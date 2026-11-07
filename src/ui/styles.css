@@ -1,0 +1,354 @@
+:root {
+  --bg: #f4f1ea;
+  --panel: #ffffff;
+  --text: #2b2b2b;
+  --muted: #7a7a7a;
+  --border: #d9d4c7;
+  --accent: #2f6db3;
+  --good: #2e7d32;
+  --bad: #c62828;
+  --selected: #fff4c2;
+  color-scheme: light;
+  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1f24;
+    --panel: #262a31;
+    --text: #e8e8e8;
+    --muted: #9aa0a6;
+    --border: #3a3f47;
+    --accent: #7fb0ff;
+    --good: #81c784;
+    --bad: #ef9a9a;
+    --selected: #4a4220;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.loading {
+  padding: 32px;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 16px 24px;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.app-header h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.notice {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notice button {
+  border: none;
+  padding: 0 6px;
+}
+
+.status {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+}
+
+.resources div {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.resources dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.resources dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.resources small {
+  color: var(--muted);
+}
+
+.warn {
+  color: var(--bad);
+}
+
+.turn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.turn-gauge {
+  width: 120px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.turn-gauge div {
+  height: 100%;
+  background: var(--accent);
+}
+
+.interval {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.layout {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 656px) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.map-wrap {
+  background: #1e4f91;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.panel h2 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.panel h2 small {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tile-info {
+  margin: 0 0 8px;
+}
+
+.count-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.commands {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.commands button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  text-align: left;
+}
+
+.cmd-name {
+  white-space: nowrap;
+}
+
+.cmd-name em {
+  font-style: normal;
+  font-size: 0.75rem;
+  margin-left: 4px;
+  color: var(--accent);
+}
+
+.cmd-cost {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.queue {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.queue li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.queue li.selected {
+  background: var(--selected);
+}
+
+.queue-item {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.queue-index {
+  min-width: 1.8em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-actions {
+  display: flex;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.queue-actions button {
+  padding: 2px 6px;
+}
+
+.log {
+  margin-top: 12px;
+}
+
+.log ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+
+.log li {
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.log-turn {
+  display: inline-block;
+  min-width: 3.5em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tone-good {
+  color: var(--good);
+}
+
+.tone-bad {
+  color: var(--bad);
+}
