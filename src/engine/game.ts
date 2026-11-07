@@ -42,6 +42,29 @@ export function generateAiIslands(rng: Rng): Island[] {
   return AI_ISLANDS.map((ai, i) => generateIsland(rng, ai.id, ai.name, controllers[i]!));
 }
 
+/**
+ * 観戦モードのゲーム。プレイヤーの島の場所にも AI を置き、4島すべてを AI が動かす。
+ * playerIslandId はその島を指すが、命令の予約や勝敗には使わない。
+ */
+export function newSpectatorGame(seed: number, settings: GameSettings = DEFAULT_SETTINGS): GameState {
+  const rng = new Rng(seed);
+  const controller = AI_CONTROLLERS[rng.int(AI_CONTROLLERS.length)]!;
+  const west = generateIsland(rng, PLAYER_ISLAND_ID, '西の島', controller);
+  const ais = generateAiIslands(rng);
+  return {
+    version: 4,
+    turn: 0,
+    rngState: rng.state,
+    islands: [west, ...ais],
+    playerIslandId: PLAYER_ISLAND_ID,
+    log: [{ turn: 0, islandId: PLAYER_ISLAND_ID, text: '観戦を始めた', tone: 'info', public: true }],
+    nextCommandId: 1,
+    settings,
+    outcome: null,
+    spectator: true,
+  };
+}
+
 export function newGame(seed: number, settings: GameSettings = DEFAULT_SETTINGS, islandName = 'あなたの島'): GameState {
   const rng = new Rng(seed);
   const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName, 'player');

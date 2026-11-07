@@ -154,7 +154,7 @@ export function RankingPanel({ game }: { game: GameState }) {
           {rows.map((island, i) => {
             const s = islandStats(island);
             return (
-              <tr key={island.id} className={island.id === game.playerIslandId ? 'me' : undefined}>
+              <tr key={island.id} className={!game.spectator && island.id === game.playerIslandId ? 'me' : undefined}>
                 <td>{island.destroyed ? '－' : i + 1}</td>
                 <td>{island.name}</td>
                 <td>{CONTROLLER_NAMES[island.controller]}</td>
@@ -173,17 +173,21 @@ export function RankingPanel({ game }: { game: GameState }) {
 interface NewGameProps {
   onStart: (settings: GameSettings) => void;
   onCancel: (() => void) | null;
+  /** 観戦モードの設定画面にする */
+  spectator?: boolean;
 }
 
-/** 新しいゲームの設定 */
-export function NewGameDialog({ onStart, onCancel }: NewGameProps) {
+/** 新しいゲーム（または観戦）の設定 */
+export function NewGameDialog({ onStart, onCancel, spectator = false }: NewGameProps) {
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   return (
     <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="newgame-title">
       <div className="dialog">
-        <h2 id="newgame-title">新しいゲーム</h2>
+        <h2 id="newgame-title">{spectator ? '観戦モード' : '新しいゲーム'}</h2>
         <p>
-          AI の島3つと競います。勝ち方は3つで、どれかを最初に達成した島の勝ちです。
+          {spectator
+            ? 'AI の島4つの戦いを眺めます。勝ち方は3つで、どれかを最初に達成した島の勝ちです。観戦中は自動セーブしないので、遊んでいたゲームはそのまま残ります。'
+            : 'AI の島3つと競います。勝ち方は3つで、どれかを最初に達成した島の勝ちです。'}
         </p>
         <ul className="rules">
           <li>軍事的制覇：自分以外の島をすべて滅亡させる</li>
@@ -234,7 +238,78 @@ export function NewGameDialog({ onStart, onCancel }: NewGameProps) {
             </button>
           )}
           <button type="button" className="primary" onClick={() => onStart(settings)}>
-            始める
+            {spectator ? '観戦を始める' : '始める'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 観戦中の右側の欄（選んだマスの情報と、観戦をやめるボタン） */
+export function SpectatorPanel({
+  island,
+  selected,
+  onExit,
+}: {
+  island: Island;
+  selected: { x: number; y: number } | null;
+  onExit: () => void;
+}) {
+  const tile = selected ? island.tiles[selected.y * island.size + selected.x] : undefined;
+  const s = islandStats(island);
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>
+          観戦中 <small>{CONTROLLER_NAMES[island.controller]}</small>
+        </h2>
+        <button type="button" onClick={onExit}>
+          観戦をやめる
+        </button>
+      </div>
+      <p className="tile-info">
+        {island.name}：人口{formatPeople(s.pop)}・面積{s.area}マス・研究{island.research.done.length}個
+        {island.destroyed ? '（滅亡）' : ''}
+      </p>
+      {selected && tile ? (
+        <p className="tile-info">
+          ({selected.x}, {selected.y}) <strong>{terrainName(tile)}</strong> {tileDetail(tile)}
+        </p>
+      ) : (
+        <p className="tile-info muted">マスを選ぶと、その情報が出ます。観戦中はミサイル基地や海底基地も見えます。</p>
+      )}
+    </section>
+  );
+}
+
+/** 観戦の決着の画面 */
+export function SpectatorOutcomeDialog({
+  outcome,
+  onAgain,
+  onExit,
+  onClose,
+}: {
+  outcome: Outcome;
+  onAgain: () => void;
+  onExit: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="spectator-outcome-title">
+      <div className="dialog">
+        <h2 id="spectator-outcome-title">観戦終了</h2>
+        <p>{outcome.reason}</p>
+        <p className="muted">ターン {outcome.turn}</p>
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            島を眺める
+          </button>
+          <button type="button" onClick={onExit}>
+            観戦をやめる
+          </button>
+          <button type="button" className="primary" onClick={onAgain}>
+            もう一度観戦
           </button>
         </div>
       </div>

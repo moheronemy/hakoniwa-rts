@@ -10,6 +10,7 @@ import {
   enqueueSendMonster,
   moveCommand,
   newGame,
+  newSpectatorGame,
   playerIsland,
   removeCommand,
   setResearch,
@@ -19,7 +20,15 @@ import { deserialize, serialize } from '../engine/save';
 import { advanceTurn } from '../engine/turn';
 import type { CommandKind, GameSettings, GameState, MissileKind, MonsterId } from '../engine/types';
 import { MapCanvas, type MapMarker } from './MapCanvas';
-import { CommandMenu, INTERVAL_OPTIONS, LogPanel, QueuePanel, StatusBar, TechPanel } from './Panels';
+import {
+  CommandMenu,
+  INTERVAL_OPTIONS,
+  LogPanel,
+  QueuePanel,
+  SPECTATOR_INTERVAL_OPTIONS,
+  StatusBar,
+  TechPanel,
+} from './Panels';
 import { AUTOSAVE_KEY, loadText, readPreference, saveText, writePreference } from './storage';
 import { useTurnTimer } from './useTurnTimer';
 import {
@@ -30,28 +39,34 @@ import {
   OutcomeDialog,
   RankingPanel,
   SendMonsterPanel,
+  SpectatorOutcomeDialog,
+  SpectatorPanel,
 } from './WarPanels';
 
 const INTERVAL_KEY = 'turnIntervalMs';
+const SPECTATOR_INTERVAL_KEY = 'spectatorIntervalMs';
 
 function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]!;
 }
 
-function initialInterval(): number {
-  const saved = Number(readPreference(INTERVAL_KEY));
-  return (INTERVAL_OPTIONS as readonly number[]).includes(saved) ? saved : 5000;
+function initialInterval(key: string, options: readonly number[], fallback: number): number {
+  const saved = Number(readPreference(key));
+  return options.includes(saved) ? saved : fallback;
 }
 
 export function App() {
   const [game, setGame] = useState<GameState | null>(null);
-  const [intervalMs, setIntervalMs] = useState(initialInterval);
+  const [intervalMs, setIntervalMs] = useState(() => initialInterval(INTERVAL_KEY, INTERVAL_OPTIONS, 5000));
+  const [spectatorIntervalMs, setSpectatorIntervalMs] = useState(() =>
+    initialInterval(SPECTATOR_INTERVAL_KEY, SPECTATOR_INTERVAL_OPTIONS, 250),
+  );
   const [viewId, setViewId] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ x: number; y: number } | null>(null);
   const [selectedCommand, setSelectedCommand] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  /** 新しいゲームの設定画面。'first' は起動時（やめられない） */
-  const [newGameOpen, setNewGameOpen] = useState<false | 'first' | 'menu'>(false);
+  /** 設定画面。'first' は起動時（やめられない）、'spectator' は観戦モード */
+  const [newGameOpen, setNewGameOpen] = useState<false | 'first' | 'menu' | 'spectator'>(false);
   const [outcomeClosed, setOutcomeClosed] = useState(false);
   const gameRef = useRef(game);
   gameRef.current = game;
@@ -78,9 +93,10 @@ export function App() {
     };
   }, []);
 
+  // 観戦中は保存しない（遊んでいたゲームの自動セーブをそのまま残す）
   const save = useCallback(() => {
     const current = gameRef.current;
-    if (current) void saveText(AUTOSAVE_KEY, serialize(current));
+    if (current && !current.spectator) void saveText(AUTOSAVE_KEY, serialize(current));
   }, []);
 
   // 毎ターンと、タブが裏に回ったとき・閉じるときに自動セーブする。
@@ -101,8 +117,13 @@ export function App() {
     };
   }, [save]);
 
+  const spectating = game?.spectator === true;
   const running = game !== null && game.outcome === null && newGameOpen === false;
-  const progress = useTurnTimer(intervalMs, () => setGame((g) => (g ? advanceTurn(g) : g)), running);
+  const progress = useTurnTimer(
+    spectating ? spectatorIntervalMs : intervalMs,
+    () => setGame((g) => (g ? advanceTurn(g) : g)),
+    running,
+  );
 
   // 予約から命令が実行されて消えたら、その選択を外す
   useEffect(() => {
@@ -120,6 +141,7 @@ export function App() {
     if (!island || !viewed) return [];
     const seen = new Set<string>();
     const result: MapMarker[] = [];
+    if (spectating) return result;
     island.queue.forEach((c, index) => {
       const onThisIsland = c.targetIslandId
         ? c.targetIslandId === viewed.id && c.kind !== 'sendMonster'
@@ -131,12 +153,20 @@ export function App() {
       result.push({ x: c.x, y: c.y, label: String(index + 1) });
     });
     return result;
-  }, [island, viewed, viewingOwn]);
+  }, [island, viewed, viewingOwn, spectating]);
 
   if (!game || !island || !viewed) {
     return (
       <div className="loading">
-        {newGameOpen ? <NewGameDialog onStart={(s) => startGame(s)} onCancel={null} /> : '読み込み中…'}
+        {newGameOpen ? (
+          <NewGameDialog
+            spectator={newGameOpen === 'spectator'}
+            onStart={(s) => (newGameOpen === 'spectator' ? startSpectator(s) : startGame(s))}
+            onCancel={newGameOpen === 'spectator' ? () => setNewGameOpen('first') : null}
+          />
+        ) : (
+          '読み込み中…'
+        )}
       </div>
     );
   }
@@ -146,14 +176,44 @@ export function App() {
   const insertIndex = insertBefore !== null && insertBefore >= 0 ? insertBefore : null;
   const islandNames = Object.fromEntries(game.islands.map((i) => [i.id, i.name]));
 
-  function startGame(settings: GameSettings) {
-    setGame(newGame(randomSeed(), settings));
+  function resetView() {
     setViewId(null);
     setSelected(null);
     setSelectedCommand(null);
     setOutcomeClosed(false);
     setNewGameOpen(false);
+  }
+
+  function startGame(settings: GameSettings) {
+    setGame(newGame(randomSeed(), settings));
+    resetView();
     setNotice('新しいゲームを始めました');
+  }
+
+  function startSpectator(settings: GameSettings) {
+    setGame(newSpectatorGame(randomSeed(), settings));
+    resetView();
+    setNotice('観戦を始めました。観戦中は自動セーブしません');
+  }
+
+  /** 観戦をやめて、自動セーブしてあった（遊んでいた）ゲームに戻る */
+  async function exitSpectator() {
+    resetView();
+    const text = await loadText(AUTOSAVE_KEY);
+    if (text) {
+      try {
+        const loaded = deserialize(text);
+        if (!loaded.spectator) {
+          setGame(loaded);
+          setNotice('観戦をやめて、遊んでいたゲームに戻りました');
+          return;
+        }
+      } catch {
+        // 読めなければ新しいゲームへ
+      }
+    }
+    setGame(null);
+    setNewGameOpen('first');
   }
 
   const handleEnqueue = (kind: CommandKind, count: number) => {
@@ -214,8 +274,13 @@ export function App() {
   };
 
   const handleIntervalChange = (ms: number) => {
-    setIntervalMs(ms);
-    writePreference(INTERVAL_KEY, String(ms));
+    if (spectating) {
+      setSpectatorIntervalMs(ms);
+      writePreference(SPECTATOR_INTERVAL_KEY, String(ms));
+    } else {
+      setIntervalMs(ms);
+      writePreference(INTERVAL_KEY, String(ms));
+    }
   };
 
   const handleView = (id: string) => {
@@ -223,33 +288,98 @@ export function App() {
     setSelected(null);
   };
 
+  const header = (
+    <header className="app-header">
+      <h1>箱庭RTS（仮）{spectating && <small className="spectator-badge">観戦中</small>}</h1>
+      <div className="header-actions">
+        {spectating ? (
+          <button type="button" onClick={() => void exitSpectator()}>
+            観戦をやめる
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => setNewGameOpen('menu')}>
+              新しいゲーム
+            </button>
+            <button type="button" onClick={() => setNewGameOpen('spectator')}>
+              観戦モード
+            </button>
+            <button type="button" onClick={handleExport}>
+              セーブを書き出す
+            </button>
+            <button type="button" onClick={() => fileInput.current?.click()}>
+              読み込む
+            </button>
+          </>
+        )}
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImport(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+    </header>
+  );
+
+  const sidePanels = spectating ? (
+    <SpectatorPanel island={viewed} selected={selected} onExit={() => void exitSpectator()} />
+  ) : (
+    <>
+      {viewingOwn && selectedTile?.kind === 'monsterLab' && selected && (
+        <BreedPanel game={game} island={island} lab={selected} onBreed={handleBreed} />
+      )}
+      {viewingOwn && selectedTile?.kind === 'monster' && (
+        <MissileMenu
+          game={game}
+          player={island}
+          target={island}
+          selected={selected}
+          insertBefore={insertIndex}
+          onFire={handleFire}
+        />
+      )}
+      {viewingOwn ? (
+        <CommandMenu
+          island={island}
+          selected={selected}
+          insertBefore={insertIndex}
+          onEnqueue={handleEnqueue}
+          onAutoPrepare={handleAutoPrepare}
+        />
+      ) : (
+        <>
+          <MissileMenu
+            game={game}
+            player={island}
+            target={viewed}
+            selected={selected}
+            insertBefore={insertIndex}
+            onFire={handleFire}
+          />
+          <SendMonsterPanel game={game} player={island} target={viewed} onSend={handleSend} />
+        </>
+      )}
+      <QueuePanel
+        island={island}
+        islandNames={islandNames}
+        selectedId={selectedCommand}
+        onSelect={setSelectedCommand}
+        onMove={(id, delta) => setGame((g) => (g ? moveCommand(g, id, delta) : g))}
+        onRemove={(id) => setGame((g) => (g ? removeCommand(g, id) : g))}
+        onClear={() => setGame((g) => (g ? clearQueue(g) : g))}
+      />
+    </>
+  );
+
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>箱庭RTS（仮）</h1>
-        <div className="header-actions">
-          <button type="button" onClick={() => setNewGameOpen('menu')}>
-            新しいゲーム
-          </button>
-          <button type="button" onClick={handleExport}>
-            セーブを書き出す
-          </button>
-          <button type="button" onClick={() => fileInput.current?.click()}>
-            読み込む
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImport(file);
-              e.target.value = '';
-            }}
-          />
-        </div>
-      </header>
+      {header}
       {notice && (
         <div className="notice" role="status">
           {notice}
@@ -259,10 +389,11 @@ export function App() {
         </div>
       )}
       <StatusBar
-        island={island}
+        island={spectating ? viewed : island}
         turn={game.turn}
         progress={progress}
-        intervalMs={intervalMs}
+        intervalMs={spectating ? spectatorIntervalMs : intervalMs}
+        intervalOptions={spectating ? SPECTATOR_INTERVAL_OPTIONS : INTERVAL_OPTIONS}
         onIntervalChange={handleIntervalChange}
       />
       <IslandTabs game={game} viewId={viewed.id} onSelect={handleView} />
@@ -273,63 +404,33 @@ export function App() {
             selected={selected}
             onSelect={(x, y) => setSelected({ x, y })}
             markers={markers}
-            display={viewingOwn ? undefined : visibleTile}
+            display={viewingOwn || spectating ? undefined : visibleTile}
             dimmed={viewed.destroyed}
           />
         </div>
-        <div className="side">
-          {viewingOwn && selectedTile?.kind === 'monsterLab' && selected && (
-            <BreedPanel game={game} island={island} lab={selected} onBreed={handleBreed} />
-          )}
-          {viewingOwn && selectedTile?.kind === 'monster' && (
-            <MissileMenu
-              game={game}
-              player={island}
-              target={island}
-              selected={selected}
-              insertBefore={insertIndex}
-              onFire={handleFire}
-            />
-          )}
-          {viewingOwn ? (
-            <CommandMenu
-              island={island}
-              selected={selected}
-              insertBefore={insertIndex}
-              onEnqueue={handleEnqueue}
-              onAutoPrepare={handleAutoPrepare}
-            />
-          ) : (
-            <>
-              <MissileMenu
-                game={game}
-                player={island}
-                target={viewed}
-                selected={selected}
-                insertBefore={insertIndex}
-                onFire={handleFire}
-              />
-              <SendMonsterPanel game={game} player={island} target={viewed} onSend={handleSend} />
-            </>
-          )}
-          <QueuePanel
-            island={island}
-            islandNames={islandNames}
-            selectedId={selectedCommand}
-            onSelect={setSelectedCommand}
-            onMove={(id, delta) => setGame((g) => (g ? moveCommand(g, id, delta) : g))}
-            onRemove={(id) => setGame((g) => (g ? removeCommand(g, id) : g))}
-            onClear={() => setGame((g) => (g ? clearQueue(g) : g))}
-          />
-        </div>
+        <div className="side">{sidePanels}</div>
       </main>
       <RankingPanel game={game} />
-      <TechPanel island={island} onSelect={(id) => setGame((g) => (g ? setResearch(g, id) : g))} />
-      <LogPanel log={game.log} />
-      {newGameOpen && (
-        <NewGameDialog onStart={startGame} onCancel={newGameOpen === 'menu' ? () => setNewGameOpen(false) : null} />
+      {!spectating && (
+        <TechPanel island={island} onSelect={(id) => setGame((g) => (g ? setResearch(g, id) : g))} />
       )}
-      {game.outcome && !outcomeClosed && !newGameOpen && (
+      <LogPanel log={game.log} islandNames={spectating ? islandNames : undefined} />
+      {newGameOpen && (
+        <NewGameDialog
+          spectator={newGameOpen === 'spectator'}
+          onStart={newGameOpen === 'spectator' ? startSpectator : startGame}
+          onCancel={newGameOpen === 'first' ? null : () => setNewGameOpen(false)}
+        />
+      )}
+      {game.outcome && !outcomeClosed && !newGameOpen && spectating && (
+        <SpectatorOutcomeDialog
+          outcome={game.outcome}
+          onAgain={() => setNewGameOpen('spectator')}
+          onExit={() => void exitSpectator()}
+          onClose={() => setOutcomeClosed(true)}
+        />
+      )}
+      {game.outcome && !outcomeClosed && !newGameOpen && !spectating && (
         <OutcomeDialog outcome={game.outcome} onNewGame={() => setNewGameOpen('menu')} onClose={() => setOutcomeClosed(true)} />
       )}
     </div>

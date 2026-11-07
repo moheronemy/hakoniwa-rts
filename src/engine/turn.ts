@@ -22,10 +22,14 @@ export function advanceTurn(prev: GameState): GameState {
   state.turn += 1;
   const turn = state.turn;
   const newLogs: LogEntry[] = [];
-  // プレイヤーに関係する出来事だけをログに残す（AI の島の内部の出来事は残さない）
+  // プレイヤーに関係する出来事だけをログに残す（AI の島の内部の出来事は残さない）。
+  // 観戦モードでは、すべての島の攻撃・災害・怪獣・滅亡などを残す
   const record = (entry: LogEntry) => {
     const id = state.playerIslandId;
-    if (entry.islandId === id || entry.public || entry.involves?.includes(id)) newLogs.push(entry);
+    const keep = state.spectator
+      ? entry.public || entry.notable || (entry.involves?.length ?? 0) > 0
+      : entry.islandId === id || entry.public || entry.involves?.includes(id);
+    if (keep) newLogs.push(entry);
   };
   const world: World = {
     islands: state.islands,
@@ -40,8 +44,10 @@ export function advanceTurn(prev: GameState): GameState {
     if (!island || island.destroyed) continue;
     const log = (text: string, tone: LogTone = 'info', involves?: string[]) =>
       record({ turn, islandId: island.id, text, tone, involves });
+    const notableLog = (text: string, tone: LogTone = 'info') =>
+      record({ turn, islandId: island.id, text, tone, notable: true });
     if (island.controller !== 'player') planAI(world, island, rng);
-    processIsland(island, rng, log, world, state.settings.disasterLevel);
+    processIsland(island, rng, log, notableLog, world, state.settings.disasterLevel);
   }
 
   updateDestruction(state, record);
@@ -71,6 +77,7 @@ function updateDestruction(state: GameState, record: (entry: LogEntry) => void):
 
 /** 勝敗の判定（仕様書18章）。決まらなければ null */
 export function checkOutcome(state: GameState): Outcome | null {
+  if (state.spectator) return spectatorOutcome(state);
   const player = state.islands.find((i) => i.id === state.playerIslandId)!;
   const turn = state.turn;
   const lose = (winnerId: string | null, reason: string): Outcome => ({ result: 'lose', winnerId, reason, turn });
@@ -101,9 +108,36 @@ export function checkOutcome(state: GameState): Outcome | null {
   return null;
 }
 
-type Logger = (text: string, tone?: LogTone, involves?: string[]) => void;
+/** 観戦モードの決着。勝った島を winnerId に入れる（result は使わない） */
+function spectatorOutcome(state: GameState): Outcome | null {
+  const turn = state.turn;
+  const done = (winner: Island, reason: string): Outcome => ({ result: 'win', winnerId: winner.id, reason, turn });
+  const alive = state.islands.filter((i) => !i.destroyed);
+  if (alive.length === 0) return { result: 'win', winnerId: null, reason: 'すべての島が滅亡した', turn };
+  const reached = alive
+    .map((island) => ({ island, pop: islandStats(island).pop }))
+    .filter((r) => r.pop >= state.settings.economicTarget)
+    .sort((a, b) => b.pop - a.pop);
+  if (reached.length > 0) return done(reached[0]!.island, `${reached[0]!.island.name}が経済的制覇を達成した`);
+  if (alive.length === 1) return done(alive[0]!, `${alive[0]!.name}が軍事的制覇を達成した`);
+  if (turn >= state.settings.turnLimit) {
+    const top = ranking(alive)[0]!;
+    return done(top, `期限を迎え、${top.name}がスコア1位になった`);
+  }
+  return null;
+}
 
-function processIsland(island: Island, rng: Rng, log: Logger, world: World, disasterLevel: number): void {
+type Logger = (text: string, tone?: LogTone, involves?: string[]) => void;
+type NotableLogger = (text: string, tone?: LogTone) => void;
+
+function processIsland(
+  island: Island,
+  rng: Rng,
+  log: Logger,
+  notableLog: NotableLogger,
+  world: World,
+  disasterLevel: number,
+): void {
   // 電力：火力発電の燃料を使い、供給率を決める（このターンの効率に使う）
   const power = computePower(island);
   island.oil -= power.fuelUsed;
@@ -115,14 +149,14 @@ function processIsland(island: Island, rng: Rng, log: Logger, world: World, disa
   const effects = runCommands(island, rng, log, world);
   doResearch(island, power.ratio, log);
   dropLostBreeding(island);
-  moveMonsters(island, rng, world.turn, log);
+  moveMonsters(island, rng, world.turn, notableLog);
   grow(island, rng, effects, power.ratio);
   // 序盤の保護の間は、災害も野生の怪獣も起きない（操作を覚える前に壊滅しないように）
   if (world.turn > RULES.protectionTurns) {
-    runDisasters(island, rng, disasterLevel, log);
-    spawnWildMonster(island, rng, disasterLevel, log);
+    runDisasters(island, rng, disasterLevel, notableLog);
+    spawnWildMonster(island, rng, disasterLevel, notableLog);
   }
-  handleFoodShortage(island, rng, log);
+  handleFoodShortage(island, rng, notableLog);
 }
 
 /** 怪獣研究所が壊れたら、そこで育てていた怪獣もいなくなる */

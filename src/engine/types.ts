@@ -170,6 +170,8 @@ export interface LogEntry {
   involves?: string[];
   /** すべての島に知らせる出来事（滅亡など） */
   public?: boolean;
+  /** 観戦モードで見せる出来事（災害・怪獣・食料不足など） */
+  notable?: boolean;
 }
 
 export interface GameSettings {
@@ -203,4 +205,6 @@ export interface GameState {
   settings: GameSettings;
   /** 勝敗が決まったら入る。決まるまで null */
   outcome: Outcome | null;
+  /** 観戦モード（すべての島が AI。プレイヤーの勝敗はない） */
+  spectator?: boolean;
 }
