@@ -564,3 +564,19 @@ button.primary {
 .outcome-lose h2 {
   color: var(--bad);
 }
+
+.log-island {
+  display: inline-block;
+  min-width: 4.5em;
+  color: var(--accent);
+}
+
+.spectator-badge {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  vertical-align: middle;
+}

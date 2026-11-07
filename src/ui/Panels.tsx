@@ -10,6 +10,8 @@ import { BRANCH_NAMES, canResearch, hasTech, TECH_LIST, TECHS, type Branch } fro
 import type { CommandKind, Island, LogEntry, TechId } from '../engine/types';
 
 export const INTERVAL_OPTIONS = [3000, 5000, 10000, 20000] as const;
+/** 観戦モードで選べる間隔 */
+export const SPECTATOR_INTERVAL_OPTIONS = [100, 250, 500, 1000, 2000] as const;
 
 interface StatusProps {
   island: Island;
@@ -17,9 +19,11 @@ interface StatusProps {
   progress: number;
   intervalMs: number;
   onIntervalChange: (ms: number) => void;
+  /** 選べる間隔（省略時は通常の間隔） */
+  intervalOptions?: readonly number[];
 }
 
-export function StatusBar({ island, turn, progress, intervalMs, onIntervalChange }: StatusProps) {
+export function StatusBar({ island, turn, progress, intervalMs, onIntervalChange, intervalOptions = INTERVAL_OPTIONS }: StatusProps) {
   const stats = islandStats(island);
   const f = forecast(island);
   const sign = (n: number) => (n >= 0 ? `+${n}` : String(n));
@@ -88,7 +92,7 @@ export function StatusBar({ island, turn, progress, intervalMs, onIntervalChange
         <label className="interval">
           間隔
           <select value={intervalMs} onChange={(e) => onIntervalChange(Number(e.target.value))}>
-            {INTERVAL_OPTIONS.map((ms) => (
+            {intervalOptions.map((ms) => (
               <option key={ms} value={ms}>
                 {ms / 1000}秒
               </option>
@@ -279,7 +283,7 @@ export function QueuePanel({ island, islandNames, selectedId, onSelect, onMove, 
   );
 }
 
-export function LogPanel({ log }: { log: LogEntry[] }) {
+export function LogPanel({ log, islandNames }: { log: LogEntry[]; islandNames?: Record<string, string> }) {
   const recent = log.slice(-80).reverse();
   return (
     <section className="panel log">
@@ -288,6 +292,7 @@ export function LogPanel({ log }: { log: LogEntry[] }) {
         {recent.map((entry, i) => (
           <li key={`${entry.turn}-${i}`} className={`tone-${entry.tone}`}>
             <span className="log-turn">T{entry.turn}</span>
+            {islandNames && <span className="log-island">{islandNames[entry.islandId]}</span>}
             {entry.text}
           </li>
         ))}

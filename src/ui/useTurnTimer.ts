@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
-const TICK_MS = 100;
+/** タイマーの刻み。短い間隔（観戦モードの0.1秒など）でも遅れないよう、間隔の半分以下にする */
+function tickFor(intervalMs: number): number {
+  return Math.max(16, Math.min(100, Math.floor(intervalMs / 2)));
+}
+
 /** タブが裏に回って間引かれたあとなどに、一度に進めすぎないための上限 */
 const MAX_STEP_MS = 250;
 
@@ -25,11 +29,12 @@ export function useTurnTimer(intervalMs: number, onTurn: () => void, running: bo
       if (document.hidden) return;
       elapsed.current += delta;
       if (elapsed.current >= intervalMs) {
-        elapsed.current = 0;
+        // 端数を次のターンに繰り越す（短い間隔でもターンの数がずれないように）
+        elapsed.current = Math.min(elapsed.current - intervalMs, intervalMs);
         onTurnRef.current();
       }
       setProgress(Math.min(1, elapsed.current / intervalMs));
-    }, TICK_MS);
+    }, tickFor(intervalMs));
     return () => window.clearInterval(id);
   }, [intervalMs, running]);
 
