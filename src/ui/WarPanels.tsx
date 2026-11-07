@@ -137,6 +137,7 @@ export function RankingPanel({ game }: { game: GameState }) {
         順位{' '}
         <small>
           経済的制覇：人口{formatPeople(game.settings.economicTarget)}・期限：{game.settings.turnLimit}ターン
+          {game.settings.peaceful && '・平和モード（勝利条件を満たしても続く）'}
         </small>
       </h2>
       <table>
@@ -229,6 +230,14 @@ export function NewGameDialog({ onStart, onCancel, spectator = false }: NewGameP
               </option>
             ))}
           </select>
+        </label>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={settings.peaceful === true}
+            onChange={(e) => setSettings({ ...settings, peaceful: e.target.checked })}
+          />
+          平和モード（他の島を攻撃できない。勝利条件を満たしてもゲームは続く）
         </label>
         <p className="muted">最初の{RULES.protectionTurns}ターンは、どの島もミサイルを撃てません。</p>
         <div className="dialog-actions">
@@ -420,6 +429,28 @@ export function SendMonsterPanel({ game, player, target, onSend }: SendMonsterPr
       <button type="button" disabled={problem !== null} title={problem ?? undefined} onClick={onSend}>
         {target.name}に怪獣を送る
       </button>
+    </section>
+  );
+}
+
+/** 平和モードで他の島を表示しているときの欄（攻撃のメニューの代わり） */
+export function PeacefulPanel({ island, selected }: { island: Island; selected: { x: number; y: number } | null }) {
+  const tile = selected ? visibleTile(island.tiles[selected.y * island.size + selected.x]!) : undefined;
+  const s = islandStats(island);
+  return (
+    <section className="panel">
+      <h2>
+        {island.name} <small>{CONTROLLER_NAMES[island.controller]}</small>
+      </h2>
+      <p className="tile-info">
+        人口{formatPeople(s.pop)}・面積{s.area}マス{island.destroyed ? '（滅亡）' : ''}
+      </p>
+      {selected && tile && (
+        <p className="tile-info">
+          ({selected.x}, {selected.y}) <strong>{terrainName(tile)}</strong> {tile.kind === 'monster' ? tileDetail(tile) : ''}
+        </p>
+      )}
+      <p className="muted">平和モードなので、他の島には攻撃も怪獣の派遣もできません。</p>
     </section>
   );
 }

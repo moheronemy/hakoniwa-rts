@@ -155,13 +155,13 @@ function decide(world: World, island: Island, profile: Profile, rng: Rng): Comma
     if (c) return c;
   }
 
-  // 5. 怪獣を育てて送る（怪獣使い型）
-  const tame = planMonsters(world, island, profile, rng, attacked);
-  if (tame) return tame;
-
-  // 6. 攻撃
-  const attack = planAttack(world, island, profile, rng, attacked);
-  if (attack) return attack;
+  // 5. 怪獣を育てて送る（怪獣使い型）。6. 攻撃。平和モードでは他の島を攻撃しない
+  if (!world.peaceful) {
+    const tame = planMonsters(world, island, profile, rng, attacked);
+    if (tame) return tame;
+    const attack = planAttack(world, island, profile, rng, attacked);
+    if (attack) return attack;
+  }
 
   // 7. 守り（迎撃施設）
   if (count(island, 'interceptor') < profile.interceptors(turn, stats.pop, attacked) && stats.pop > 200) {

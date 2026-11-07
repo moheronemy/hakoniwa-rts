@@ -36,6 +36,7 @@ export function advanceTurn(prev: GameState): GameState {
     turn,
     emit: (e) => record({ ...e, turn }),
     economicTarget: state.settings.economicTarget,
+    peaceful: state.settings.peaceful,
   };
 
   const order = rng.permutation(state.islands.length);
@@ -51,6 +52,7 @@ export function advanceTurn(prev: GameState): GameState {
   }
 
   updateDestruction(state, record);
+  if (state.settings.peaceful) recordMilestones(state, record);
   state.outcome = checkOutcome(state);
   if (state.outcome) {
     record({ turn, islandId: state.playerIslandId, text: state.outcome.reason, tone: state.outcome.result === 'win' ? 'good' : 'bad', public: true });
@@ -77,6 +79,12 @@ function updateDestruction(state: GameState, record: (entry: LogEntry) => void):
 
 /** 勝敗の判定（仕様書18章）。決まらなければ null */
 export function checkOutcome(state: GameState): Outcome | null {
+  // 平和モードでは勝利条件でゲームは終わらない（自分の島の滅亡だけで終わる。観戦は終わらない）
+  if (state.settings.peaceful) {
+    if (state.spectator) return null;
+    const me = state.islands.find((i) => i.id === state.playerIslandId)!;
+    return me.destroyed ? { result: 'lose', winnerId: null, reason: 'あなたの島が滅亡した', turn: state.turn } : null;
+  }
   if (state.spectator) return spectatorOutcome(state);
   const player = state.islands.find((i) => i.id === state.playerIslandId)!;
   const turn = state.turn;
@@ -106,6 +114,51 @@ export function checkOutcome(state: GameState): Outcome | null {
       : lose(top.id, `期限を迎え、${top.name}がスコア1位になった`);
   }
   return null;
+}
+
+/**
+ * 平和モード：勝利条件を満たしたことを、1回だけ記録してログで知らせる（ゲームは続く）。
+ */
+function recordMilestones(state: GameState, record: (entry: LogEntry) => void): void {
+  const milestones = (state.milestones ??= []);
+  const reached = new Set(milestones.map((m) => m.key));
+  const isPlayer = (island: Island) => !state.spectator && island.id === state.playerIslandId;
+  const add = (key: string, island: Island, text: string, tone: LogTone) => {
+    if (reached.has(key)) return;
+    reached.add(key);
+    milestones.push({ key, text, turn: state.turn });
+    record({ turn: state.turn, islandId: island.id, text, tone, public: true });
+  };
+  const target = state.settings.economicTarget;
+  const targetText = `${(target * 100).toLocaleString('ja-JP')}人`;
+  const alive = state.islands.filter((i) => !i.destroyed);
+
+  for (const island of alive) {
+    if (islandStats(island).pop < target) continue;
+    add(
+      `economic:${island.id}`,
+      island,
+      isPlayer(island)
+        ? `経済的制覇の条件（人口${targetText}）を達成した！ 平和モードなので、このまま続けられる`
+        : `${island.name}が経済的制覇の目標人口（${targetText}）に届いた`,
+      isPlayer(island) ? 'good' : 'info',
+    );
+  }
+  if (state.islands.length > 1 && alive.length === 1) {
+    const last = alive[0]!;
+    add(`military:${last.id}`, last, isPlayer(last) ? '他の島がすべて滅亡し、最後の島として残った' : `${last.name}だけが残った`, 'info');
+  }
+  if (state.turn === state.settings.turnLimit && alive.length > 0) {
+    const top = ranking(alive)[0]!;
+    add(
+      'deadline',
+      top,
+      isPlayer(top)
+        ? `期限の${state.settings.turnLimit}ターンを、スコア1位で迎えた！ 平和モードなので、このまま続けられる`
+        : `期限の${state.settings.turnLimit}ターンを迎えた。スコア1位は${top.name}`,
+      isPlayer(top) ? 'good' : 'info',
+    );
+  }
 }
 
 /** 観戦モードの決着。勝った島を winnerId に入れる（result は使わない） */
