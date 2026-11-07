@@ -8,13 +8,14 @@ import {
   newGame,
   playerIsland,
   removeCommand,
+  setResearch,
 } from '../engine/game';
 import { COMMANDS } from '../engine/commands';
 import { deserialize, serialize } from '../engine/save';
 import { advanceTurn } from '../engine/turn';
 import type { CommandKind, GameState } from '../engine/types';
 import { MapCanvas } from './MapCanvas';
-import { CommandMenu, INTERVAL_OPTIONS, LogPanel, QueuePanel, StatusBar } from './Panels';
+import { CommandMenu, INTERVAL_OPTIONS, LogPanel, QueuePanel, StatusBar, TechPanel } from './Panels';
 import { AUTOSAVE_KEY, loadText, readPreference, saveText, writePreference } from './storage';
 import { useTurnTimer } from './useTurnTimer';
 
@@ -221,6 +222,7 @@ export function App() {
           />
         </div>
       </main>
+      <TechPanel island={island} onSelect={(id) => setGame((g) => (g ? setResearch(g, id) : g))} />
       <LogPanel log={game.log} />
     </div>
   );

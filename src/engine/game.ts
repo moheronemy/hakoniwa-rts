@@ -3,7 +3,8 @@ import { generateIsland } from './generate';
 import { tileAt } from './island';
 import { Rng } from './rng';
 import { RULES } from './rules';
-import type { Command, CommandKind, GameState, Island } from './types';
+import { canResearch } from './tech';
+import type { Command, CommandKind, GameState, Island, TechId } from './types';
 
 export const PLAYER_ISLAND_ID = 'player';
 
@@ -11,7 +12,7 @@ export function newGame(seed: number, islandName = 'あなたの島'): GameState
   const rng = new Rng(seed);
   const island = generateIsland(rng, PLAYER_ISLAND_ID, islandName);
   return {
-    version: 1,
+    version: 2,
     turn: 0,
     rngState: rng.state,
     islands: [island],
@@ -95,6 +96,18 @@ export function moveCommand(state: GameState, commandId: number, delta: number):
 
 export function clearQueue(state: GameState): GameState {
   return updatePlayerQueue(state, () => []);
+}
+
+/** 研究する技術を選ぶ（null で選ばない）。研究できない技術は選べない */
+export function setResearch(state: GameState, techId: TechId | null): GameState {
+  const island = playerIsland(state);
+  if (techId !== null && !canResearch(island, techId)) return state;
+  return {
+    ...state,
+    islands: state.islands.map((i) =>
+      i.id === state.playerIslandId ? { ...i, research: { ...i.research, current: techId } } : i,
+    ),
+  };
 }
 
 /** 自動入力の対象になる荒地（上から順。すでに整地か地ならしを予約しているマスは除く） */

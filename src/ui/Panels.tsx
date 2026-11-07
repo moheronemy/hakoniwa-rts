@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { COMMAND_LIST, COMMANDS, targetProblem } from '../engine/commands';
+import { COMMAND_LIST, COMMANDS, commandCost, targetProblem } from '../engine/commands';
+import { forecast } from '../engine/forecast';
 import { autoPrepareTargets } from '../engine/game';
 import { formatPeople, formatThousands, islandStats, terrainName, tileAt, tileDetail } from '../engine/island';
 import { RULES } from '../engine/rules';
-import type { CommandKind, Island, LogEntry } from '../engine/types';
+import { BRANCH_NAMES, canResearch, hasTech, TECH_LIST, TECHS, type Branch } from '../engine/tech';
+import type { CommandKind, Island, LogEntry, TechId } from '../engine/types';
 
 export const INTERVAL_OPTIONS = [3000, 5000, 10000, 20000] as const;
 
@@ -17,10 +19,10 @@ interface StatusProps {
 
 export function StatusBar({ island, turn, progress, intervalMs, onIntervalChange }: StatusProps) {
   const stats = islandStats(island);
-  const farmWorkers = Math.min(stats.pop, stats.farm * 10);
-  const foodDelta = Math.floor(farmWorkers - stats.pop * RULES.foodPerPop);
-  const moneyDelta = Math.floor(Math.min(stats.pop - farmWorkers, stats.factory * 10) / 10);
+  const f = forecast(island);
   const sign = (n: number) => (n >= 0 ? `+${n}` : String(n));
+  const round = (n: number) => Math.round(n * 10) / 10;
+  const current = island.research.current;
 
   return (
     <div className="status">
@@ -28,19 +30,38 @@ export function StatusBar({ island, turn, progress, intervalMs, onIntervalChange
         <div>
           <dt>資金</dt>
           <dd>
-            {island.money.toLocaleString('ja-JP')}億円 <small>{sign(moneyDelta)}/ターン</small>
+            {island.money.toLocaleString('ja-JP')}億円 <small>{sign(f.money)}/ターン</small>
           </dd>
         </div>
         <div>
           <dt>食料</dt>
           <dd>
             {(island.food * 100).toLocaleString('ja-JP')}トン{' '}
-            <small className={foodDelta < 0 ? 'warn' : undefined}>{sign(foodDelta * 100)}/ターン</small>
+            <small className={f.food < 0 ? 'warn' : undefined}>{sign(f.food * 100)}/ターン</small>
           </dd>
         </div>
         <div>
           <dt>人口</dt>
           <dd>{formatPeople(stats.pop)}</dd>
+        </div>
+        <div title="供給／需要（万kW）">
+          <dt>電力</dt>
+          <dd className={f.power.ratio < 1 ? 'warn' : undefined}>
+            {Math.round(f.power.supply)}/{Math.round(f.power.demand)}万kW{' '}
+            <small>{Math.round(f.power.ratio * 100)}%</small>
+          </dd>
+        </div>
+        <div>
+          <dt>石油</dt>
+          <dd>
+            {Math.floor(island.oil)} <small className={f.oil < 0 ? 'warn' : undefined}>{sign(round(f.oil))}/ターン</small>
+          </dd>
+        </div>
+        <div title={current ? `研究中：${TECHS[current].name}` : '研究する技術を選んでいません'}>
+          <dt>研究</dt>
+          <dd>
+            {current ? TECHS[current].name : '未選択'} <small>+{round(f.research)}/ターン</small>
+          </dd>
         </div>
         <div>
           <dt>農場</dt>
@@ -117,11 +138,13 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoP
       </div>
       <ul className="commands">
         {COMMAND_LIST.map((def) => {
+          // マスを対象にしない命令（石油の売却など）は、実行するときに条件を確かめるので予約はできる
           const problem = def.targeted
             ? selected
               ? targetProblem(island, def.kind, selected.x, selected.y)
               : 'マスを選んでください'
             : null;
+          const cost = commandCost(island, def.kind);
           const disabled = problem !== null || room <= 0;
           return (
             <li key={def.kind}>
@@ -135,7 +158,7 @@ export function CommandMenu({ island, selected, insertBefore, onEnqueue, onAutoP
                   {def.name}
                   {def.instant && <em>即時</em>}
                 </span>
-                <span className="cmd-cost">{def.cost > 0 ? `${def.cost}億円` : '無料'}</span>
+                <span className="cmd-cost">{cost > 0 ? `${cost.toLocaleString('ja-JP')}億円` : '無料'}</span>
               </button>
             </li>
           );
@@ -253,6 +276,71 @@ export function LogPanel({ log }: { log: LogEntry[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+interface TechPanelProps {
+  island: Island;
+  onSelect: (id: TechId | null) => void;
+}
+
+export function TechPanel({ island, onSelect }: TechPanelProps) {
+  const { research } = island;
+  const branches = Object.keys(BRANCH_NAMES) as Branch[];
+  return (
+    <section className="panel tech">
+      <div className="panel-head">
+        <h2>
+          技術ツリー <small>貯まっている研究ポイント {Math.floor(research.pool)}</small>
+        </h2>
+        {research.current && (
+          <button type="button" onClick={() => onSelect(null)}>
+            研究をやめる
+          </button>
+        )}
+      </div>
+      <div className="tech-branches">
+        {branches.map((branch) => (
+          <div key={branch} className="tech-branch">
+            <h3>{BRANCH_NAMES[branch]}</h3>
+            <ol>
+              {TECH_LIST.filter((t) => t.branch === branch).map((tech) => {
+                const done = hasTech(island, tech.id);
+                const isCurrent = research.current === tech.id;
+                const available = canResearch(island, tech.id);
+                const spent = Math.floor(research.progress[tech.id] ?? 0);
+                const state = done ? 'done' : isCurrent ? 'current' : available ? 'available' : 'locked';
+                const label = done
+                  ? '完成'
+                  : isCurrent
+                    ? `研究中 ${spent}/${tech.cost}`
+                    : available
+                      ? `${spent > 0 ? `${spent}/` : ''}${tech.cost}pt`
+                      : `前提：${TECHS[tech.requires!].name}`;
+                return (
+                  <li key={tech.id} className={`tech-${state}`}>
+                    <button
+                      type="button"
+                      disabled={!available || isCurrent}
+                      title={tech.description}
+                      onClick={() => onSelect(tech.id)}
+                    >
+                      <span className="tech-name">{tech.name}</span>
+                      <span className="tech-state">{label}</span>
+                      {(isCurrent || (spent > 0 && !done)) && (
+                        <span className="tech-bar">
+                          <span style={{ width: `${Math.min(100, (spent / tech.cost) * 100)}%` }} />
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

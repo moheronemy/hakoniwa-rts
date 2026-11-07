@@ -247,15 +247,17 @@ button:disabled {
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 6px;
 }
 
 .commands button {
   width: 100%;
+  height: 100%;
   display: flex;
-  justify-content: space-between;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   text-align: left;
 }
 
@@ -368,4 +370,78 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.tech {
+  margin-top: 12px;
+}
+
+.tech-branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.tech-branch h3 {
+  font-size: 0.9rem;
+  margin: 0 0 6px;
+}
+
+.tech-branch ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tech-branch button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  text-align: left;
+}
+
+.tech-branch button:disabled {
+  cursor: default;
+}
+
+.tech-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tech-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.tech-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.tech-done button {
+  opacity: 1;
+  border-color: var(--good);
+}
+
+.tech-done .tech-state {
+  color: var(--good);
+}
+
+.tech-current button {
+  opacity: 1;
+  border-color: var(--accent);
+  background: var(--selected);
+}
+
+.tech-locked button {
+  opacity: 0.5;
 }

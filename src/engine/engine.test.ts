@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { executeCommand, targetProblem } from './commands';
+import { executeCommand, targetProblem, type CommandContext } from './commands';
 import {
   autoPrepareTargets,
   clearQueue,
@@ -16,6 +16,7 @@ import { islandStats, isSea, setTile, tileAt } from './island';
 import { Rng } from './rng';
 import { RULES } from './rules';
 import { deserialize, serialize } from './save';
+import { newResearch } from './tech';
 import { advanceTurn, collectIncome } from './turn';
 import type { GameState, Island } from './types';
 
@@ -28,13 +29,19 @@ function emptyIsland(size = 6): Island {
     tiles: Array.from({ length: size * size }, () => ({ kind: 'deepSea' as const, value: 0 })),
     money: 1000,
     food: 1000,
+    oil: 0,
+    research: newResearch(),
     queue: [],
   };
 }
 
+function ctx(seed = 1): CommandContext {
+  return { effects: { attract: false }, rng: new Rng(seed) };
+}
+
 function stateWith(island: Island): GameState {
   return {
-    version: 1,
+    version: 2,
     turn: 0,
     rngState: 42,
     islands: [island],
@@ -112,7 +119,7 @@ describe('命令', () => {
   it('整地は費用を払って平地にする', () => {
     const island = emptyIsland();
     setTile(island, 2, 2, 'waste');
-    const result = executeCommand(island, 'prepare', 2, 2, { attract: false });
+    const result = executeCommand(island, 'prepare', 2, 2, ctx());
     expect(result.ok).toBe(true);
     expect(tileAt(island, 2, 2).kind).toBe('plains');
     expect(island.money).toBe(1000 - 5);
@@ -128,19 +135,19 @@ describe('命令', () => {
   it('農場は重ねると規模が上がり、最大を超えない', () => {
     const island = emptyIsland();
     setTile(island, 1, 1, 'plains');
-    executeCommand(island, 'farm', 1, 1, { attract: false });
+    executeCommand(island, 'farm', 1, 1, ctx());
     expect(tileAt(island, 1, 1)).toEqual({ kind: 'farm', value: RULES.farmInitial });
-    executeCommand(island, 'farm', 1, 1, { attract: false });
+    executeCommand(island, 'farm', 1, 1, ctx());
     expect(tileAt(island, 1, 1).value).toBe(RULES.farmInitial + RULES.farmStep);
     tileAt(island, 1, 1).value = RULES.farmMax;
-    expect(executeCommand(island, 'farm', 1, 1, { attract: false }).ok).toBe(false);
+    expect(executeCommand(island, 'farm', 1, 1, ctx()).ok).toBe(false);
   });
 
   it('資金が足りなければ実行しない', () => {
     const island = emptyIsland();
     setTile(island, 0, 0, 'plains');
     island.money = 10;
-    const result = executeCommand(island, 'factory', 0, 0, { attract: false });
+    const result = executeCommand(island, 'factory', 0, 0, ctx());
     expect(result.ok).toBe(false);
     expect(island.money).toBe(10);
     expect(tileAt(island, 0, 0).kind).toBe('plains');
@@ -217,6 +224,7 @@ describe('advanceTurn', () => {
     const island = islandForTurns();
     setTile(island, 0, 0, 'town', 10);
     setTile(island, 5, 0, 'town', RULES.cityThreshold);
+    setTile(island, 2, 3, 'windPower', 1); // 都市の電力をまかなう
     island.food = 100000;
     let state = stateWith(island);
     state = advanceTurn(state);

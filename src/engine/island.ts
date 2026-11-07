@@ -12,8 +12,9 @@ export function setTile(island: Island, x: number, y: number, kind: TerrainKind,
   island.tiles[y * island.size + x] = { kind, value };
 }
 
+/** 海のマス（深い海・浅瀬・海上油田） */
 export function isSea(kind: TerrainKind): boolean {
-  return kind === 'deepSea' || kind === 'shallow';
+  return kind === 'deepSea' || kind === 'shallow' || kind === 'oilField';
 }
 
 export function hasAdjacent(
@@ -71,6 +72,12 @@ const TERRAIN_NAMES: Record<Exclude<TerrainKind, 'town'>, string> = {
   mountain: '山',
   farm: '農場',
   factory: '工場',
+  oilField: '海上油田',
+  windPower: '風力発電所',
+  hydroPower: '水力発電所',
+  thermalPower: '火力発電所',
+  nuclearPower: '原子力発電所',
+  lab: '研究所',
 };
 
 export function terrainName(tile: Tile): string {
@@ -92,6 +99,14 @@ export function tileDetail(tile: Tile): string {
       return `${formatThousands(tile.value)}人規模`;
     case 'forest':
       return `${(tile.value * 100).toLocaleString('ja-JP')}本`;
+    case 'oilField':
+      return `埋蔵量 ${tile.value}`;
+    case 'windPower':
+    case 'hydroPower':
+    case 'thermalPower':
+    case 'nuclearPower':
+    case 'lab':
+      return `${tile.value}段階`;
     default:
       return '';
   }

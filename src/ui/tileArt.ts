@@ -30,6 +30,11 @@ function house(ctx: Ctx, x: number, y: number, wall: string, roof: string): void
   px(ctx, '#5d4037', x + 3, y + 5, 2, 3);
 }
 
+/** 発電所や研究所の段階を、右下に小さな点で示す */
+function drawLevel(ctx: Ctx, ox: number, oy: number, level: number): void {
+  for (let i = 0; i < level; i++) px(ctx, '#ffeb3b', ox + 27 - i * 4, oy + 27, 3, 3);
+}
+
 function tree(ctx: Ctx, x: number, y: number): void {
   px(ctx, '#2e7d32', x + 2, y, 4, 2);
   px(ctx, '#2e7d32', x + 1, y + 2, 6, 3);
@@ -111,6 +116,54 @@ export function drawTile(ctx: Ctx, tile: Tile, ox: number, oy: number): void {
       px(ctx, '#424242', ox + 20, oy + 4, 4, 10);
       px(ctx, '#bdbdbd', ox + 19, oy + 1, 6, 3);
       for (let i = 0; i < 4; i++) px(ctx, '#ffcc80', ox + 6 + i * 6, oy + 19, 3, 3);
+      break;
+    case 'oilField':
+      base(ctx, ox, oy, '#1e4f91');
+      px(ctx, '#37474f', ox + 6, oy + 20, 20, 6);
+      px(ctx, '#90a4ae', ox + 14, oy + 4, 3, 16);
+      px(ctx, '#90a4ae', ox + 10, oy + 10, 11, 2);
+      px(ctx, '#ff7043', ox + 22, oy + 8, 4, 4);
+      break;
+    case 'windPower':
+      grass(ctx, ox, oy);
+      px(ctx, '#eceff1', ox + 15, oy + 10, 2, 20);
+      px(ctx, '#eceff1', ox + 6, oy + 9, 10, 2);
+      px(ctx, '#eceff1', ox + 16, oy + 2, 2, 9);
+      px(ctx, '#eceff1', ox + 17, oy + 10, 9, 2);
+      px(ctx, '#78909c', ox + 15, oy + 9, 3, 3);
+      drawLevel(ctx, ox, oy, tile.value);
+      break;
+    case 'hydroPower':
+      base(ctx, ox, oy, '#4a90d0');
+      px(ctx, '#9e9e9e', ox + 2, oy + 10, 28, 12);
+      px(ctx, '#bdbdbd', ox + 2, oy + 10, 28, 3);
+      px(ctx, '#e3f2fd', ox + 8, oy + 22, 4, 8);
+      px(ctx, '#e3f2fd', ox + 20, oy + 22, 4, 8);
+      drawLevel(ctx, ox, oy, tile.value);
+      break;
+    case 'thermalPower':
+      base(ctx, ox, oy, '#a1887f');
+      px(ctx, '#6d4c41', ox + 3, oy + 16, 26, 13);
+      px(ctx, '#bcaaa4', ox + 7, oy + 4, 5, 12);
+      px(ctx, '#bcaaa4', ox + 18, oy + 6, 5, 10);
+      px(ctx, '#e0e0e0', ox + 6, oy + 1, 7, 3);
+      drawLevel(ctx, ox, oy, tile.value);
+      break;
+    case 'nuclearPower':
+      grass(ctx, ox, oy);
+      px(ctx, '#cfd8dc', ox + 6, oy + 12, 20, 16);
+      px(ctx, '#cfd8dc', ox + 9, oy + 8, 14, 4);
+      px(ctx, '#cfd8dc', ox + 12, oy + 5, 8, 3);
+      px(ctx, '#fdd835', ox + 14, oy + 16, 4, 4);
+      drawLevel(ctx, ox, oy, tile.value);
+      break;
+    case 'lab':
+      grass(ctx, ox, oy);
+      px(ctx, '#e8eaf6', ox + 4, oy + 12, 24, 16);
+      px(ctx, '#5c6bc0', ox + 4, oy + 10, 24, 3);
+      px(ctx, '#5c6bc0', ox + 13, oy + 4, 6, 6);
+      for (let i = 0; i < 3; i++) px(ctx, '#7986cb', ox + 7 + i * 7, oy + 16, 4, 4);
+      drawLevel(ctx, ox, oy, tile.value);
       break;
     default: {
       const unreachable: never = tile.kind;
